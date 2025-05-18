@@ -8,8 +8,25 @@ const fs         = require('fs');
 const path       = require('path');
 
 const app = express();
-app.use(cors({ origin: 'http://localhost:5173', methods: ['GET','POST','DELETE'] }));
+
+// —— CORS 配置 ——
+// 线上允许域名访问（如果不再需要本地调试，可以删掉 localhost 那一行）
+app.use(cors({
+  origin: [
+    'https://spyccb.top',
+    'https://www.spyccb.top',
+    'http://spyccb.top',     // http 也放行，便于测试
+    'http://www.spyccb.top'
+  ],
+  methods: ['GET','POST','DELETE']
+}));
+
 app.use(bodyParser.json());
+
+// Health check on root of API
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
 // ------------ 词库持久化加载 ------------
 const DATA_FILE = path.resolve(__dirname, 'wordlists.json');
@@ -84,7 +101,16 @@ app.delete('/wordlists/:name/items', (req, res) => {
 
 // ------------ Socket.IO 实时游戏逻辑 ------------
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: 'http://localhost:5173' } });
+const io     = new Server(server, {
+  cors: {
+    origin: [
+      'https://spyccb.top',
+      'https://www.spyccb.top',
+      'http://spyccb.top',
+      'http://www.spyccb.top'
+    ]
+  }
+});
 
 let rooms      = {};   // { roomId: { host, listName, players:[{id,name,role,alive}] } }
 let votes      = {};   // { roomId: { [fromId]: toId } }
