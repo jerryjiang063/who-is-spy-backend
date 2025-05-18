@@ -1,0 +1,15 @@
+# 忽略依赖和构建产物
+node_modules/
+dist/
+
+# 环境变量文件
+.env
+
+# 锁文件
+package-lock.json
+yarn.lock
+
+# IDE 与系统文件
+.idea/
+.vscode/
+*.log

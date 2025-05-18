@@ -1,0 +1,18 @@
+{
+  "name": "who-is-spy-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "daisyui": "^5.0.35",
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}
