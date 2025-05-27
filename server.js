@@ -1,4 +1,3 @@
-
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
@@ -137,6 +136,10 @@ io.on('connection', socket => {
     if (room && !room.players.find(p => p.id === socket.id)) {
       room.players.push({ id: socket.id, name, role: null, alive: false });
       socket.join(roomId);
+      // 修复：如果房主已不在房间，自动指定新房主
+      if (!room.players.find(p => p.id === room.host)) {
+        room.host = room.players[0].id;
+      }
       io.to(roomId).emit('room-updated', room);
     }
   });
