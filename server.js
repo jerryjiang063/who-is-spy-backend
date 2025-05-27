@@ -168,6 +168,7 @@ io.on('connection', socket => {
 
   // 开始游戏或下一轮
   socket.on('start-game', ({ roomId, spyCount }) => {
+    console.log('收到 start-game', { roomId, spyCount, from: socket.id }); // 调试日志
     const room = rooms[roomId];
     if (!room) return;
     // 首轮分配角色
@@ -224,6 +225,12 @@ io.on('connection', socket => {
 
     // 淘出卧底 → 结束
     if (eliminatedRole === 'spy') {
+      // 新增：所有玩家都收到 summary
+      const summary = {};
+      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+        summary[pid] = info;
+      });
+      io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-eliminated', { eliminatedId });
       votes[roomId] = {};
       return;
@@ -239,6 +246,12 @@ io.on('connection', socket => {
     const spiesAlive = alive.filter(p => p.role === 'spy').length;
     const civiliansAlive = alive.filter(p => p.role === 'civilian').length;
     if (alive.length === 2 && spiesAlive === 1 && civiliansAlive === 1) {
+      // 新增：所有玩家都收到 summary
+      const summary = {};
+      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+        summary[pid] = info;
+      });
+      io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-win');
       votes[roomId] = {};
       return;
