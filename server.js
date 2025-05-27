@@ -122,6 +122,7 @@ io.on('connection', socket => {
   // 创建房间
   socket.on('create-room', ({ roomId, name }) => {
     rooms[roomId] = {
+      id: roomId,
       host: socket.id,
       listName: 'default',
       players: [{ id: socket.id, name, role: null, alive: false }]
@@ -140,6 +141,7 @@ io.on('connection', socket => {
       if (!room.players.find(p => p.id === room.host)) {
         room.host = room.players[0].id;
       }
+      room.id = roomId;
       io.to(roomId).emit('room-updated', room);
     }
   });
