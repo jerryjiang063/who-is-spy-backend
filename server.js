@@ -199,6 +199,20 @@ io.on('connection', socket => {
 
     const room = rooms[roomId];
     if (!room) return;
+    // 新增：投票前只要存活人数为2且一平一卧，直接判定卧底胜利
+    const alivePre = room.players.filter(p => p.alive);
+    const spiesAlivePre = alivePre.filter(p => p.role === 'spy').length;
+    const civiliansAlivePre = alivePre.filter(p => p.role === 'civilian').length;
+    if (alivePre.length === 2 && spiesAlivePre === 1 && civiliansAlivePre === 1) {
+      const summary = {};
+      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+        summary[pid] = info;
+      });
+      io.to(roomId).emit('round-summary', { summary });
+      io.to(roomId).emit('spy-win');
+      votes[roomId] = {};
+      return;
+    }
     // 等待所有存活玩家投票
     const aliveCount = room.players.filter(p => p.alive).length;
     if (Object.keys(votes[roomId]).length < aliveCount) return;
@@ -241,12 +255,11 @@ io.on('connection', socket => {
       if (p.id === eliminatedId) p.alive = false;
     });
 
-    // 少人数判定：只剩一平一卧 → 卧底胜利
-    const alive = room.players.filter(p => p.alive);
-    const spiesAlive = alive.filter(p => p.role === 'spy').length;
-    const civiliansAlive = alive.filter(p => p.role === 'civilian').length;
-    if (alive.length === 2 && spiesAlive === 1 && civiliansAlive === 1) {
-      // 新增：所有玩家都收到 summary
+    // 新增：淘汰后只剩卧底也直接判定卧底胜利
+    const alivePost = room.players.filter(p => p.alive);
+    const spiesAlivePost = alivePost.filter(p => p.role === 'spy').length;
+    const civiliansAlivePost = alivePost.filter(p => p.role === 'civilian').length;
+    if (spiesAlivePost === 1 && civiliansAlivePost === 0 && alivePost.length === 1) {
       const summary = {};
       Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
         summary[pid] = info;
