@@ -121,11 +121,18 @@ io.on('connection', socket => {
 
   // 创建房间
   socket.on('create-room', ({ roomId, name }) => {
+    // 检查房间是否已经存在
+    if (rooms[roomId]) {
+      socket.emit('room-exists'); // 发送房间已存在的消息
+      return;
+    }
+
     rooms[roomId] = {
       id: roomId,
       host: socket.id,
       listName: 'default',
-      players: [{ id: socket.id, name, role: null, alive: false }]
+      players: [{ id: socket.id, name, role: null, alive: false }],
+      status: 'waiting', // 添加房间状态: waiting, playing, finished
     };
     socket.join(roomId);
     io.to(roomId).emit('room-updated', rooms[roomId]);
@@ -146,6 +153,67 @@ io.on('connection', socket => {
     }
   });
 
+  // 离开房间
+  socket.on('leave-room', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    
+    // 从房间移除该玩家
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    if (playerIndex !== -1) {
+      room.players.splice(playerIndex, 1);
+      socket.leave(roomId);
+      
+      // 如果房间没有玩家了，删除房间
+      if (room.players.length === 0) {
+        delete rooms[roomId];
+        return;
+      }
+      
+      // 如果离开的是房主，指定新房主
+      if (room.host === socket.id) {
+        room.host = room.players[0].id;
+      }
+      
+      // 通知房间内其他玩家
+      io.to(roomId).emit('room-updated', room);
+    }
+  });
+
+  // 检查房间状态
+  socket.on('check-room-status', ({ roomId }, callback) => {
+    const room = rooms[roomId];
+    if (!room) {
+      callback({ exists: false });
+      return;
+    }
+    
+    callback({ 
+      exists: true, 
+      status: room.status || 'waiting',
+      playerCount: room.players.length
+    });
+  });
+
+  // 踢出玩家
+  socket.on('kick-player', ({ roomId, playerId }) => {
+    const room = rooms[roomId];
+    if (!room || room.host !== socket.id) return; // 只有房主可以踢人
+    
+    const playerIndex = room.players.findIndex(p => p.id === playerId);
+    if (playerIndex !== -1) {
+      // 通知被踢玩家
+      io.to(playerId).emit('kicked-from-room');
+      
+      // 从房间移除该玩家
+      room.players.splice(playerIndex, 1);
+      io.sockets.sockets.get(playerId)?.leave(roomId); // 使玩家离开房间
+      
+      // 通知房间内其他玩家
+      io.to(roomId).emit('room-updated', room);
+    }
+  });
+
   // 切换词库
   socket.on('change-list', ({ roomId, listName }) => {
     const room = rooms[roomId];
@@ -159,10 +227,15 @@ io.on('connection', socket => {
   socket.on('reset-game', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return;
+    if (room.host !== socket.id) { // 只有房主可以重置游戏
+      // 非房主玩家试图重置，不发送警告，直接忽略
+      return;
+    }
     delete spiesMap[roomId];
     delete wordMap[roomId];
     delete votes[roomId];
     room.players.forEach(p => { p.role = null; p.alive = false; });
+    room.status = 'waiting'; // 重置房间状态
     io.to(roomId).emit('room-updated', room);
   });
 
@@ -183,6 +256,7 @@ io.on('connection', socket => {
     }
     // 全员存活
     room.players.forEach(p => p.alive = true);
+    room.status = 'playing'; // 设置房间状态为游戏中
     io.to(roomId).emit('room-updated', room);
     dealWords(roomId);
   });
@@ -199,22 +273,38 @@ io.on('connection', socket => {
 
     const room = rooms[roomId];
     if (!room) return;
-    // 新增：投票前只要存活人数为2且一平一卧，直接判定卧底胜利
-    const alivePre = room.players.filter(p => p.alive);
-    const spiesAlivePre = alivePre.filter(p => p.role === 'spy').length;
-    const civiliansAlivePre = alivePre.filter(p => p.role === 'civilian').length;
-    if (alivePre.length === 2 && spiesAlivePre === 1 && civiliansAlivePre === 1) {
-      const summary = {};
-      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
-        summary[pid] = info;
-      });
-      io.to(roomId).emit('round-summary', { summary });
-      io.to(roomId).emit('spy-win');
-      votes[roomId] = {};
-      return;
+
+    // 检查场上存活人数
+    const alivePlayers = room.players.filter(p => p.alive);
+    
+    // 如果场上只剩下2名玩家，检查是否一平一卧
+    if (alivePlayers.length === 2) {
+      const spiesAlive = alivePlayers.filter(p => p.role === 'spy').length;
+      const civiliansAlive = alivePlayers.filter(p => p.role === 'civilian').length;
+      
+      // 如果是一平一卧，直接卧底胜利
+      if (spiesAlive === 1 && civiliansAlive === 1) {
+        // 准备游戏摘要信息
+        const summary = {};
+        Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+          summary[pid] = info;
+        });
+        
+        // 设置房间状态为已完成
+        room.status = 'finished';
+        
+        // 向房间内所有玩家发送结束消息
+        io.to(roomId).emit('round-summary', { summary });
+        io.to(roomId).emit('spy-win');
+        
+        // 清空投票信息
+        votes[roomId] = {};
+        return;
+      }
     }
+    
     // 等待所有存活玩家投票
-    const aliveCount = room.players.filter(p => p.alive).length;
+    const aliveCount = alivePlayers.length;
     if (Object.keys(votes[roomId]).length < aliveCount) return;
 
     // 统计票数
@@ -244,6 +334,7 @@ io.on('connection', socket => {
       Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
         summary[pid] = info;
       });
+      room.status = 'finished'; // 设置房间状态为已完成
       io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-eliminated', { eliminatedId });
       votes[roomId] = {};
@@ -255,15 +346,31 @@ io.on('connection', socket => {
       if (p.id === eliminatedId) p.alive = false;
     });
 
-    // 新增：淘汰后只剩卧底也直接判定卧底胜利
+    // 重新检查剩余玩家情况
     const alivePost = room.players.filter(p => p.alive);
     const spiesAlivePost = alivePost.filter(p => p.role === 'spy').length;
     const civiliansAlivePost = alivePost.filter(p => p.role === 'civilian').length;
-    if (spiesAlivePost === 1 && civiliansAlivePost === 0 && alivePost.length === 1) {
+    
+    // 如果现在是两名玩家且一平一卧，卧底胜利
+    if (alivePost.length === 2 && spiesAlivePost === 1 && civiliansAlivePost === 1) {
       const summary = {};
       Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
         summary[pid] = info;
       });
+      room.status = 'finished'; // 设置房间状态为已完成
+      io.to(roomId).emit('round-summary', { summary });
+      io.to(roomId).emit('spy-win');
+      votes[roomId] = {};
+      return;
+    }
+    
+    // 如果只剩下卧底
+    if (spiesAlivePost === 1 && civiliansAlivePost === 0) {
+      const summary = {};
+      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+        summary[pid] = info;
+      });
+      room.status = 'finished'; // 设置房间状态为已完成
       io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-win');
       votes[roomId] = {};
@@ -278,7 +385,7 @@ io.on('connection', socket => {
     io.to(eliminatedId).emit('round-summary', { summary });
 
     // 其余存活玩家重新投票
-    room.players.filter(p => p.alive).forEach(p => {
+    alivePost.forEach(p => {
       io.to(p.id).emit('start-next-vote');
     });
 
@@ -290,7 +397,25 @@ io.on('connection', socket => {
     const room = rooms[roomId];
     const list = wordLists[room.listName] || [];
     if (!list.length) return;
-    const [cWord, sWord] = list[Math.floor(Math.random() * list.length)].split(',');
+    
+    // 从词库中随机选择一行词语
+    const randomPair = list[Math.floor(Math.random() * list.length)];
+    
+    // 将词语分割为两个词
+    const wordsArray = randomPair.split(',');
+    
+    // 验证是否有两个词
+    if (wordsArray.length !== 2) {
+      console.error('Invalid word format, expected "word1,word2"');
+      return;
+    }
+    
+    // 随机决定是否交换词语顺序 (50% 的概率)
+    const shouldSwap = Math.random() < 0.5;
+    
+    // 根据是否交换决定平民词和卧底词
+    const [cWord, sWord] = shouldSwap ? [wordsArray[1], wordsArray[0]] : [wordsArray[0], wordsArray[1]];
+    
     wordMap[roomId] = {};
     room.players.forEach(p => {
       if (!p.alive) return;
