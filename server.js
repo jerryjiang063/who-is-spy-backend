@@ -245,6 +245,39 @@ app.get('/quiz/random', (req, res) => {
     const playerId = req.query.playerId || '';
     console.log(`Random question requested by player: ${playerId}`);
     
+    // 初始化该玩家的已回答题目记录
+    if (playerId && !answeredQuestions[playerId]) {
+      answeredQuestions[playerId] = new Set();
+    }
+    
+    // 检查玩家是否已回答所有题目
+    if (playerId && answeredQuestions[playerId] && 
+        answeredQuestions[playerId].size >= quizzes.questions.length) {
+      console.log(`Player ${playerId} has answered all questions`);
+      return res.status(200).json({ 
+        allCompleted: true,
+        message: "You are already a master of figurative language, and you have answered all the questions in the question bank!"
+      });
+    }
+    
+    // 获取该玩家未回答过的题目
+    let availableQuestions = [];
+    if (playerId && answeredQuestions[playerId]) {
+      availableQuestions = quizzes.questions.filter(q => !answeredQuestions[playerId].has(q.id));
+      console.log(`Player ${playerId} has ${availableQuestions.length} questions remaining`);
+    } else {
+      availableQuestions = quizzes.questions;
+    }
+    
+    if (availableQuestions.length === 0) {
+      // 这种情况不应该发生，因为我们前面已经检查过了
+      // 但为了安全起见，再次处理
+      return res.status(200).json({ 
+        allCompleted: true,
+        message: "You are already a master of figurative language, and you have answered all the questions in the question bank!"
+      });
+    }
+    
     // 使用玩家ID作为随机种子的一部分，确保不同玩家获得不同题目
     // 同时加入时间戳，确保同一玩家在不同时间获得不同题目
     const timestamp = Date.now();
@@ -252,10 +285,10 @@ app.get('/quiz/random', (req, res) => {
     const seedNumber = Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0), 0);
     
     // 使用种子生成随机索引
-    const randomIndex = Math.abs(seedNumber) % quizzes.questions.length;
-    console.log(`Generated random index ${randomIndex} for player ${playerId}`);
+    const randomIndex = Math.abs(seedNumber) % availableQuestions.length;
+    console.log(`Generated random index ${randomIndex} from ${availableQuestions.length} available questions for player ${playerId}`);
     
-    const question = quizzes.questions[randomIndex];
+    const question = availableQuestions[randomIndex];
     
     // 不返回正确答案和解释，这些在提交答案后才返回
     const { correctAnswer, explanation, ...questionData } = question;
@@ -288,7 +321,7 @@ app.post('/quiz/submit', (req, res) => {
       return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
     }
     
-    const { questionId, answer } = req.body;
+    const { questionId, answer, playerId } = req.body;
     
     if (!questionId || answer === undefined) {
       return res.status(400).json({ error: 'Missing questionId or answer' });
@@ -301,6 +334,15 @@ app.post('/quiz/submit', (req, res) => {
     }
     
     const isCorrect = question.correctAnswer === answer;
+    
+    // 如果答案正确且提供了玩家ID，记录该题目已被回答
+    if (isCorrect && playerId) {
+      if (!answeredQuestions[playerId]) {
+        answeredQuestions[playerId] = new Set();
+      }
+      answeredQuestions[playerId].add(questionId);
+      console.log(`Player ${playerId} answered question ${questionId} correctly. Total answered: ${answeredQuestions[playerId].size}/${quizzes.questions.length}`);
+    }
     
     res.json({
       isCorrect,
@@ -359,10 +401,12 @@ const io     = new Server(server, {
   }
 });
 
+// ------------ 全局变量 ------------
 let rooms      = {};   // { roomId: { host, listName, players:[{id,name,role,alive,inPunishment}] } }
 let votes      = {};   // { roomId: { [fromId]: toId } }
 let wordMap    = {};   // { roomId: { [playerId]: { word, role } } }
 let spiesMap   = {};   // { roomId: Set<playerIndex> }
+let answeredQuestions = {}; // { playerId: Set<questionId> } - 记录每个玩家已回答过的题目
 
 io.on('connection', (socket) => {
   console.log(`New client connected: ${socket.id}`);
