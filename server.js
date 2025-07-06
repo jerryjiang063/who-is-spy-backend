@@ -8,6 +8,51 @@ const path       = require('path');
 
 const app = express();
 
+// 添加简单的请求限制中间件
+const requestLimits = {};
+function rateLimiter(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const endpoint = req.path;
+  const key = `${ip}:${endpoint}`;
+  
+  // 初始化或更新请求计数
+  if (!requestLimits[key]) {
+    requestLimits[key] = {
+      count: 1,
+      firstRequest: Date.now()
+    };
+  } else {
+    requestLimits[key].count++;
+  }
+  
+  // 检查是否在1秒内发送了超过10个相同请求
+  if (Date.now() - requestLimits[key].firstRequest < 1000 && requestLimits[key].count > 10) {
+    console.log(`Rate limit exceeded for ${key}`);
+    return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+  }
+  
+  // 重置超过1秒的计数器
+  if (Date.now() - requestLimits[key].firstRequest > 1000) {
+    requestLimits[key] = {
+      count: 1,
+      firstRequest: Date.now()
+    };
+  }
+  
+  // 清理旧的请求记录（超过5分钟的）
+  const now = Date.now();
+  Object.keys(requestLimits).forEach(k => {
+    if (now - requestLimits[k].firstRequest > 5 * 60 * 1000) {
+      delete requestLimits[k];
+    }
+  });
+  
+  next();
+}
+
+// 应用限流中间件
+app.use(rateLimiter);
+
 // —— CORS 配置 ——
 // 线上允许域名访问（如果不再需要本地调试，可以删掉 localhost 那一行）
 app.use(cors({
@@ -98,113 +143,162 @@ try {
 
 // ------------ REST: 词库管理 ------------
 app.get('/wordlists', (req, res) => {
-  res.json(Object.keys(wordLists));
+  try {
+    console.log('Wordlists requested');
+    // 添加缓存控制头，减少重复请求
+    res.set('Cache-Control', 'public, max-age=60'); // 缓存1分钟
+    res.json(Object.keys(wordLists));
+  } catch (error) {
+    console.error('Error in GET /wordlists:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/wordlists', (req, res) => {
-  const { name } = req.body;
-  if (!name || wordLists[name]) {
-    return res.status(400).json({ error: 'invalid or exists' });
+  try {
+    const { name } = req.body;
+    if (!name || wordLists[name]) {
+      return res.status(400).json({ error: 'invalid or exists' });
+    }
+    wordLists[name] = [];
+    saveWordLists();
+    res.json({});
+  } catch (error) {
+    console.error('Error in POST /wordlists:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  wordLists[name] = [];
-  saveWordLists();
-  res.json({});
 });
 
 app.delete('/wordlists/:name', (req, res) => {
-  delete wordLists[req.params.name];
-  saveWordLists();
-  res.json({});
+  try {
+    delete wordLists[req.params.name];
+    saveWordLists();
+    res.json({});
+  } catch (error) {
+    console.error(`Error in DELETE /wordlists/${req.params.name}:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.get('/wordlists/:name', (req, res) => {
-  res.json(wordLists[req.params.name] || []);
+  try {
+    // 添加缓存控制头，减少重复请求
+    res.set('Cache-Control', 'public, max-age=60'); // 缓存1分钟
+    res.json(wordLists[req.params.name] || []);
+  } catch (error) {
+    console.error(`Error in GET /wordlists/${req.params.name}:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/wordlists/:name/items', (req, res) => {
-  const { item } = req.body;
-  if (!item) return res.status(400).json({ error: 'invalid' });
-  wordLists[req.params.name] = wordLists[req.params.name] || [];
-  wordLists[req.params.name].push(item);
-  saveWordLists();
-  res.json({});
+  try {
+    const { item } = req.body;
+    if (!item) return res.status(400).json({ error: 'invalid' });
+    wordLists[req.params.name] = wordLists[req.params.name] || [];
+    wordLists[req.params.name].push(item);
+    saveWordLists();
+    res.json({});
+  } catch (error) {
+    console.error(`Error in POST /wordlists/${req.params.name}/items:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.delete('/wordlists/:name/items', (req, res) => {
-  const { item } = req.query;
-  wordLists[req.params.name] = (wordLists[req.params.name] || []).filter(i => i !== item);
-  saveWordLists();
-  res.json({});
+  try {
+    const { item } = req.query;
+    wordLists[req.params.name] = (wordLists[req.params.name] || []).filter(i => i !== item);
+    saveWordLists();
+    res.json({});
+  } catch (error) {
+    console.error(`Error in DELETE /wordlists/${req.params.name}/items:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ------------ REST: 题库管理 ------------
 // 获取随机题目 - 只在 figurativelanguage 域名中可用
 app.get('/quiz/random', (req, res) => {
-  // 检查请求来源
-  const origin = req.get('origin') || '';
-  console.log('Quiz random request from origin:', origin); // 添加日志
-  
-  // 放宽检查条件，允许任何包含 figurativelanguage 的域名
-  // 或者本地开发环境访问
-  const isFigLang = origin.includes('figurativelanguage') || 
-                   origin.includes('localhost') || 
-                   origin.includes('127.0.0.1') ||
-                   !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
-  
-  if (!isFigLang) {
-    console.log('Access denied for origin:', origin); // 添加日志
-    return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+  try {
+    // 检查请求来源
+    const origin = req.get('origin') || '';
+    console.log('Quiz random request from origin:', origin);
+    
+    // 放宽检查条件，允许任何包含 figurativelanguage 的域名
+    // 或者本地开发环境访问
+    const isFigLang = origin.includes('figurativelanguage') || 
+                     origin.includes('localhost') || 
+                     origin.includes('127.0.0.1') ||
+                     !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
+    
+    if (!isFigLang) {
+      console.log('Access denied for origin:', origin);
+      return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+    }
+    
+    if (!quizzes.questions || quizzes.questions.length === 0) {
+      return res.status(404).json({ error: 'No questions available' });
+    }
+    
+    // 使用缓存的随机索引，避免频繁计算
+    const randomIndex = Math.floor(Math.random() * quizzes.questions.length);
+    const question = quizzes.questions[randomIndex];
+    
+    // 不返回正确答案和解释，这些在提交答案后才返回
+    const { correctAnswer, explanation, ...questionData } = question;
+    
+    // 添加缓存控制头，减少重复请求
+    res.set('Cache-Control', 'public, max-age=60'); // 缓存1分钟
+    res.json(questionData);
+  } catch (error) {
+    console.error('Error in /quiz/random:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  if (!quizzes.questions || quizzes.questions.length === 0) {
-    return res.status(404).json({ error: 'No questions available' });
-  }
-  
-  const randomIndex = Math.floor(Math.random() * quizzes.questions.length);
-  const question = quizzes.questions[randomIndex];
-  
-  // 不返回正确答案和解释，这些在提交答案后才返回
-  const { correctAnswer, explanation, ...questionData } = question;
-  
-  res.json(questionData);
 });
 
 // 提交答案 - 只在 figurativelanguage 域名中可用
 app.post('/quiz/submit', (req, res) => {
-  // 检查请求来源
-  const origin = req.get('origin') || '';
-  console.log('Quiz submit request from origin:', origin); // 添加日志
-  
-  // 放宽检查条件，允许任何包含 figurativelanguage 的域名
-  // 或者本地开发环境访问
-  const isFigLang = origin.includes('figurativelanguage') || 
-                   origin.includes('localhost') || 
-                   origin.includes('127.0.0.1') ||
-                   !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
-  
-  if (!isFigLang) {
-    console.log('Access denied for origin:', origin); // 添加日志
-    return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+  try {
+    // 检查请求来源
+    const origin = req.get('origin') || '';
+    console.log('Quiz submit request from origin:', origin);
+    
+    // 放宽检查条件，允许任何包含 figurativelanguage 的域名
+    // 或者本地开发环境访问
+    const isFigLang = origin.includes('figurativelanguage') || 
+                     origin.includes('localhost') || 
+                     origin.includes('127.0.0.1') ||
+                     !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
+    
+    if (!isFigLang) {
+      console.log('Access denied for origin:', origin);
+      return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+    }
+    
+    const { questionId, answer } = req.body;
+    
+    if (!questionId || answer === undefined) {
+      return res.status(400).json({ error: 'Missing questionId or answer' });
+    }
+    
+    const question = quizzes.questions.find(q => q.id === questionId);
+    
+    if (!question) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+    
+    const isCorrect = question.correctAnswer === answer;
+    
+    res.json({
+      isCorrect,
+      correctAnswer: question.correctAnswer,
+      explanation: question.explanation || ''
+    });
+  } catch (error) {
+    console.error('Error in /quiz/submit:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  const { questionId, answer } = req.body;
-  
-  if (questionId === undefined || answer === undefined) {
-    return res.status(400).json({ error: 'Missing questionId or answer' });
-  }
-  
-  const question = quizzes.questions.find(q => q.id === questionId);
-  if (!question) {
-    return res.status(404).json({ error: 'Question not found' });
-  }
-  
-  const isCorrect = answer === question.correctAnswer;
-  
-  res.json({
-    isCorrect,
-    correctAnswer: question.correctAnswer,
-    explanation: question.explanation
-  });
 });
 
 // 检测客户端是否来自figurativelanguage域名
