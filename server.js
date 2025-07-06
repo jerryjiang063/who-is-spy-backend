@@ -314,60 +314,58 @@ io.on('connection', socket => {
   const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
   
   // 创建房间
-  socket.on('create-room', ({ roomId, name }) => {
-    // 检查房间是否已经存在
-    if (rooms[roomId]) {
-      console.log(`Room creation failed - Room ${roomId} already exists`);
-      socket.emit('room-exists'); // 发送房间已存在的消息
-      return;
-    }
+  socket.on('create-room', ({ roomId, name, listName }) => {
+    console.log(`Create-room event received - Room: ${roomId}, Player: ${name}, List: ${listName}`);
     
     // 检查客户端来源
     const clientOrigin = socket.handshake.headers.origin || '';
     console.log(`Creating room ${roomId} - Client origin: ${clientOrigin}`);
     const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
-    console.log(`isFigLang determined as: ${isFigLang} for room ${roomId}`);
     
-    // 确保词库存在
-    if (isFigLang) {
-      if (!wordLists.figurative_language || !Array.isArray(wordLists.figurative_language) || wordLists.figurative_language.length === 0) {
-        console.warn('figurative_language 词库不存在或为空，创建默认词库');
-        wordLists.figurative_language = [
-          "Metaphor,Simile",
-          "Personification,Anthropomorphism",
-          "Hyperbole,Exaggeration",
-          "Onomatopoeia,Alliteration",
-          "Irony,Sarcasm"
-        ];
-        saveWordLists();
-      }
+    // 如果是figurativelanguage域名，强制使用figurative_language词库
+    if (isFigLang && listName !== 'figurative_language') {
+      console.log(`Forcing figurative_language list for figLang client in new room ${roomId}`);
+      listName = 'figurative_language';
     }
     
-    const listName = isFigLang ? 'figurative_language' : 'default';
-    console.log(`Setting initial list name to: ${listName} for room ${roomId}`);
-
+    // 确保词库存在
+    if (!wordLists[listName]) {
+      console.log(`Word list ${listName} not found, defaulting to 'default'`);
+      listName = 'default';
+    }
+    
+    // 创建房间
     rooms[roomId] = {
       id: roomId,
       host: socket.id,
-      listName: listName,
       players: [{ id: socket.id, name, role: null, alive: false, inPunishment: false }],
-      status: 'waiting', // 添加房间状态: waiting, playing, finished
-      isFigLang: isFigLang, // 记录房间类型
+      listName: listName,
+      isFigLang: isFigLang,
+      gameStarted: false,
+      votingStarted: false
     };
     
-    console.log(`Room ${roomId} created successfully:`);
-    console.log(`- Host: ${socket.id}`);
-    console.log(`- ListName: ${rooms[roomId].listName}`);
-    console.log(`- isFigLang: ${rooms[roomId].isFigLang}`);
-    
     socket.join(roomId);
+    console.log(`Room ${roomId} created with list: ${listName}, isFigLang: ${isFigLang}`);
     io.to(roomId).emit('room-updated', rooms[roomId]);
   });
 
   // 加入房间
   socket.on('join-room', ({ roomId, name }) => {
+    console.log(`Join-room event received - Room: ${roomId}, Player: ${name}`);
     const room = rooms[roomId];
     if (room && !room.players.find(p => p.id === socket.id)) {
+      // 检查客户端来源
+      const clientOrigin = socket.handshake.headers.origin || '';
+      console.log(`Joining room ${roomId} - Client origin: ${clientOrigin}`);
+      const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
+      
+      // 如果是figurativelanguage域名，确保使用figurative_language词库
+      if (isFigLang && room.listName !== 'figurative_language') {
+        console.log(`Updating room list name from ${room.listName} to figurative_language for figLang client`);
+        room.listName = 'figurative_language';
+      }
+      
       room.players.push({ id: socket.id, name, role: null, alive: false, inPunishment: false });
       socket.join(roomId);
       // 修复：如果房主已不在房间，自动指定新房主
@@ -375,7 +373,12 @@ io.on('connection', socket => {
         room.host = room.players[0].id;
       }
       room.id = roomId;
+      console.log(`Player ${name} joined room ${roomId}, list name: ${room.listName}`);
       io.to(roomId).emit('room-updated', room);
+    } else if (!room) {
+      console.log(`Join room failed - Room ${roomId} not found`);
+    } else {
+      console.log(`Join room failed - Player already in room ${roomId}`);
     }
   });
 
@@ -444,22 +447,44 @@ io.on('connection', socket => {
   socket.on('change-list', ({ roomId, listName }) => {
     console.log(`Change-list event received - Room: ${roomId}, List: ${listName}`);
     const room = rooms[roomId];
-    if (room && wordLists[listName]) {
-      console.log(`Changing list from ${room.listName} to ${listName}`);
-      
-      // 检查是否为特殊词库
-      if (listName === 'figurative_language' && !room.isFigLang) {
-        console.log(`Rejecting figurative_language list for non-figLang room`);
-        socket.emit('special-wordlist-error', { message: '该词库为特殊词库，请在figurativelanguage.spyccb.top中使用。' });
-        return;
-      }
-      
-      room.listName = listName;
-      console.log(`List changed successfully. Room now has listName: ${room.listName}`);
-      io.to(roomId).emit('room-updated', room);
-    } else {
-      console.log(`Change list failed - Room exists: ${!!room}, List exists: ${!!wordLists[listName]}`);
+    
+    // 调试：打印所有房间信息
+    console.log('Current rooms:', Object.keys(rooms).map(id => ({
+      id,
+      host: rooms[id].host,
+      listName: rooms[id].listName,
+      isFigLang: rooms[id].isFigLang,
+      playerCount: rooms[id].players.length
+    })));
+    
+    if (!room) {
+      console.log(`Change list failed - Room ${roomId} not found`);
+      return;
     }
+    
+    if (!wordLists[listName]) {
+      console.log(`Change list failed - List ${listName} not found`);
+      return;
+    }
+    
+    console.log(`Changing list from ${room.listName} to ${listName}`);
+    
+    // 检查是否为特殊词库
+    if (listName === 'figurative_language' && !room.isFigLang) {
+      console.log(`Rejecting figurative_language list for non-figLang room`);
+      socket.emit('special-wordlist-error', { message: '该词库为特殊词库，请在figurativelanguage.spyccb.top中使用。' });
+      return;
+    }
+    
+    // 强制更新房间词库
+    room.listName = listName;
+    console.log(`List changed successfully. Room now has listName: ${room.listName}`);
+    
+    // 确保更新已应用
+    console.log(`Verification - Room ${roomId} now has listName: ${rooms[roomId].listName}`);
+    
+    // 向所有玩家广播房间更新
+    io.to(roomId).emit('room-updated', room);
   });
 
   // 重置游戏回大厅
@@ -482,50 +507,55 @@ io.on('connection', socket => {
     io.to(roomId).emit('room-updated', room);
   });
 
-  // 开始游戏或下一轮
-  socket.on('start-game', ({ roomId, spyCount }) => {
-    console.log('收到 start-game', { roomId, spyCount, from: socket.id }); // 调试日志
+  // 开始游戏
+  socket.on('start-game', ({ roomId, spyCount, isQuiz, quizId }) => {
+    console.log(`Start-game event received - Room: ${roomId}, SpyCount: ${spyCount}, isQuiz: ${isQuiz}, quizId: ${quizId}`);
     const room = rooms[roomId];
-    if (!room) return;
-    
-    console.log(`Starting game in room ${roomId}:`);
-    console.log(`- List name: ${room.listName}`);
-    console.log(`- isFigLang: ${room.isFigLang}`);
-    console.log(`- Available lists: ${Object.keys(wordLists)}`);
-    console.log(`- Spy count: ${spyCount}`);
-    
-    // 强制检查：如果是figurativelanguage域名，确保使用figurative_language词库
-    if (room.isFigLang && room.listName !== 'figurative_language') {
-      console.log(`强制修正：将词库从 ${room.listName} 改为 figurative_language`);
-      room.listName = 'figurative_language';
-      // 向客户端发送房间更新，确保UI显示正确的词库
-      io.to(roomId).emit('room-updated', room);
-    }
-    
-    // 检查是否有玩家在惩罚环节 - 只在 figurativelanguage 域名中检查
-    if (room.isFigLang) {
-      const anyPlayerInPunishment = room.players.some(p => p.inPunishment);
-      if (anyPlayerInPunishment) {
-        socket.emit('players-in-punishment');
-        return;
+    if (room) {
+      // 检查客户端来源
+      const clientOrigin = socket.handshake.headers.origin || '';
+      console.log(`Starting game in room ${roomId} - Client origin: ${clientOrigin}`);
+      const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
+      
+      // 如果是figurativelanguage域名，强制使用figurative_language词库
+      if (isFigLang) {
+        console.log(`Forcing figurative_language list for figLang client in room ${roomId}`);
+        room.listName = 'figurative_language';
+        room.isFigLang = true;
       }
-    }
-    
-    // 首轮分配角色
-    if (!spiesMap[roomId]) {
-      spiesMap[roomId] = new Set();
-      while (spiesMap[roomId].size < spyCount) {
-        spiesMap[roomId].add(Math.floor(Math.random() * room.players.length));
+      
+      console.log(`Starting game with list: ${room.listName}`);
+      
+      // 确保词库存在
+      if (!wordLists[room.listName]) {
+        console.log(`Word list ${room.listName} not found, defaulting to 'default'`);
+        room.listName = 'default';
       }
-      room.players.forEach((p, i) => {
-        p.role = spiesMap[roomId].has(i) ? 'spy' : 'civilian';
+      
+      // 记录开始前的词库信息
+      console.log(`Pre-game word list check - Room: ${roomId}, List: ${room.listName}`);
+      console.log(`Word list contains ${wordLists[room.listName].length} word pairs`);
+      
+      // 重置游戏状态
+      room.gameStarted = true;
+      room.votingStarted = false;
+      room.players.forEach(p => {
+        p.alive = true;
+        p.role = null;
+        p.inPunishment = false;
       });
+      
+      // 发牌
+      dealWords(room, spyCount, isQuiz, quizId);
+      
+      // 记录发牌后的状态
+      console.log(`Post-deal state - Room: ${roomId}, List used: ${room.listName}`);
+      console.log(`Players with roles: ${room.players.filter(p => p.role !== null).length}/${room.players.length}`);
+      
+      io.to(roomId).emit('game-started', room);
+    } else {
+      console.log(`Start game failed - Room ${roomId} not found`);
     }
-    // 全员存活
-    room.players.forEach(p => p.alive = true);
-    room.status = 'playing'; // 设置房间状态为游戏中
-    io.to(roomId).emit('room-updated', room);
-    dealWords(roomId);
   });
 
   // 显示/隐藏身份
@@ -718,88 +748,69 @@ io.on('connection', socket => {
   });
 
   // 发牌函数
-  function dealWords(roomId) {
-    const room = rooms[roomId];
-    console.log(`Room ${roomId} listName: ${room.listName}, isFigLang: ${room.isFigLang}`);
+  function dealWords(room, spyCount, isQuiz, quizId) {
+    console.log(`Dealing words for room ${room.id} - List: ${room.listName}, isFigLang: ${room.isFigLang}`);
     
     // 确保在 figurativelanguage 域名下使用 figurative_language 词库
     if (room.isFigLang && room.listName !== 'figurative_language') {
-      console.log(`Correcting list name for figLang room from ${room.listName} to figurative_language`);
+      console.log(`Correcting list name from ${room.listName} to figurative_language for figLang room`);
       room.listName = 'figurative_language';
     }
     
-    // 直接检查词库是否存在，如果不存在，使用备用词库
-    if (!wordLists[room.listName] || !Array.isArray(wordLists[room.listName]) || wordLists[room.listName].length === 0) {
-      console.error(`词库 ${room.listName} 不存在或为空，使用备用词库`);
-      
-      if (room.isFigLang) {
-        // 如果是figurative_language域名，使用默认的figurative_language词库
-        wordLists.figurative_language = [
-          "Metaphor,Simile",
-          "Personification,Anthropomorphism",
-          "Hyperbole,Exaggeration",
-          "Onomatopoeia,Alliteration",
-          "Irony,Sarcasm"
-        ];
-        room.listName = 'figurative_language';
-        saveWordLists();
-      } else {
-        // 否则使用default词库
-        room.listName = 'default';
-      }
-      
-      console.log(`已切换到备用词库: ${room.listName}`);
+    // 选择词库
+    const wordList = wordLists[room.listName] || wordLists['default'];
+    console.log(`Using word list: ${room.listName}, which has ${wordList.length} word pairs`);
+    
+    // 随机选择词语对
+    const wordPairIndex = Math.floor(Math.random() * wordList.length);
+    const wordPair = wordList[wordPairIndex];
+    console.log(`Selected word pair index: ${wordPairIndex}`);
+    
+    // 分割词语对
+    let [cWord, sWord] = wordPair.split(',');
+    
+    // 确保词语对格式正确
+    if (!sWord) {
+      console.log(`Invalid word pair format: ${wordPair}, using default`);
+      cWord = '平民';
+      sWord = '卧底';
     }
     
-    const list = wordLists[room.listName] || [];
-    console.log(`List from ${room.listName} has ${list.length} entries`);
-    console.log(`First 3 entries: ${list.slice(0, 3)}`);
-    
-    if (!list.length) {
-      console.error(`Empty word list for ${room.listName}`);
-      return;
-    }
-    
-    // 从词库中随机选择一行词语
-    const randomIndex = Math.floor(Math.random() * list.length);
-    const randomPair = list[randomIndex];
-    console.log(`Selected word pair index ${randomIndex}: "${randomPair}"`);
-    
-    // 将词语分割为两个词
-    const wordsArray = randomPair.split(',');
-    
-    // 验证是否有两个词
-    if (wordsArray.length !== 2) {
-      console.error('Invalid word format, expected "word1,word2"');
-      return;
-    }
-    
-    console.log(`Split words: [${wordsArray[0]}] and [${wordsArray[1]}]`);
-    
-    // 为 figurative_language 词库特殊处理，不随机交换词序
-    let cWord, sWord;
-    
+    // 特殊处理：对于figurative_language词库，不交换词语顺序
     if (room.listName === 'figurative_language') {
-      // figurative_language 列表保持固定顺序：平民词在前，卧底词在后
-      cWord = wordsArray[0]; // 第一个词是平民词（更常见/通用的概念）
-      sWord = wordsArray[1]; // 第二个词是卧底词（更特殊的概念）
-      console.log(`Using fixed order for figurative_language - Civilian: [${cWord}], Spy: [${sWord}]`);
+      console.log(`Using figurative_language list - Not swapping word order`);
     } else {
-      // 其他列表随机交换词序
-      const shouldSwap = Math.random() < 0.5;
-      console.log(`Should swap words: ${shouldSwap}`);
-      [cWord, sWord] = shouldSwap ? [wordsArray[1], wordsArray[0]] : [wordsArray[0], wordsArray[1]];
+      // 随机交换词语顺序（普通词库）
+      if (Math.random() > 0.5) {
+        [cWord, sWord] = [sWord, cWord];
+        console.log(`Swapped word order for non-figLang list`);
+      }
     }
     
     console.log(`Final words assignment - Civilian: [${cWord}], Spy: [${sWord}]`);
     
-    wordMap[roomId] = {};
+    // 分配角色
+    const playerCount = room.players.length;
+    const spyIndices = new Set();
+    
+    // 随机选择间谍
+    while (spyIndices.size < spyCount) {
+      spyIndices.add(Math.floor(Math.random() * playerCount));
+    }
+    
+    // 分配角色和词语
+    room.players.forEach((player, index) => {
+      player.role = spyIndices.has(index) ? 'spy' : 'civilian';
+      player.alive = true;
+    });
+    
+    // 记录词语分配
+    wordMap[room.id] = {};
     room.players.forEach(p => {
-      if (!p.alive) return;
-      const w = p.role === 'spy' ? sWord : cWord;
-      wordMap[roomId][p.id] = { word: w, role: p.role };
-      io.to(p.id).emit('deal-words', { word: w, role: p.role });
-      console.log(`Assigned word [${w}] to player ${p.name} (${p.role})`);
+      const word = p.role === 'spy' ? sWord : cWord;
+      wordMap[room.id][p.id] = { word, role: p.role };
+      io.to(p.id).emit('deal-words', { word, role: p.role });
+      console.log(`Assigned word [${word}] to player ${p.name} (${p.role})`);
     });
   }
 });
