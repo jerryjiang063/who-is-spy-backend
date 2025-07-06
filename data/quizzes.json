@@ -1,0 +1,354 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "The wind whispered secrets through the trees. What figurative language is used in this sentence?",
+      "options": ["Hyperbole", "Personification", "Simile", "Alliteration"],
+      "correctAnswer": 1,
+      "explanation": "This sentence gives human qualities (whispering secrets) to the wind, which is personification."
+    },
+    {
+      "id": 2,
+      "question": "She was as graceful as a swan gliding across the lake. What literary device is used here?",
+      "options": ["Metaphor", "Allusion", "Simile", "Symbolism"],
+      "correctAnswer": 2,
+      "explanation": "This is a direct comparison using \"as,\" which defines a simile."
+    },
+    {
+      "id": 3,
+      "question": "I've told you a million times to clean your room! Which figurative device is used?",
+      "options": ["Metonymy", "Irony", "Hyperbole", "Pun"],
+      "correctAnswer": 2,
+      "explanation": "Exaggeration for emphasis. No one literally says something a million times."
+    },
+    {
+      "id": 4,
+      "question": "Her voice was music to his ears. This is an example of:",
+      "options": ["Metaphor", "Onomatopoeia", "Idiom", "Symbol"],
+      "correctAnswer": 0,
+      "explanation": "A direct comparison without \"like\" or \"as\"; it equates voice to music."
+    },
+    {
+      "id": 5,
+      "question": "Boom! The fireworks exploded above our heads. Which device is used in the word \"Boom\"?",
+      "options": ["Alliteration", "Imagery", "Oxymoron", "Onomatopoeia"],
+      "correctAnswer": 3,
+      "explanation": "\"Boom\" imitates sound directly, fitting the definition of onomatopoeia."
+    },
+    {
+      "id": 6,
+      "question": "The cruel kindness of her words stayed with him. What device is this?",
+      "options": ["Juxtaposition", "Symbolism", "Oxymoron", "Irony"],
+      "correctAnswer": 2,
+      "explanation": "\"Cruel\" and \"kindness\" contradict each other—this is a classic oxymoron."
+    },
+    {
+      "id": 7,
+      "question": "Death is a long sleep from which no one wakes. This is an example of:",
+      "options": ["Simile", "Metaphor", "Personification", "Euphemism"],
+      "correctAnswer": 3,
+      "explanation": "Describing death as \"sleep\" is a gentler, indirect way of expressing a harsh reality."
+    },
+    {
+      "id": 8,
+      "question": "The classroom was a zoo. Which device is used here?",
+      "options": ["Metaphor", "Hyperbole", "Simile", "Idiom"],
+      "correctAnswer": 0,
+      "explanation": "The sentence directly compares the classroom to a zoo without using \"like\" or \"as.\""
+    },
+    {
+      "id": 9,
+      "question": "He joked that the 100-page essay was 'a light afternoon read.' Which device is at play?",
+      "options": ["Understatement", "Satire", "Pun", "Verbal Irony"],
+      "correctAnswer": 0,
+      "explanation": "It's a deliberate downplay of something significant, which defines understatement."
+    },
+    {
+      "id": 10,
+      "question": "He cracked a joke about broken bones. What figurative language is used?",
+      "options": ["Irony", "Pun", "Litotes", "Allusion"],
+      "correctAnswer": 1,
+      "explanation": "The joke uses a play on words—\"cracked\" and \"broken\"—typical of a pun."
+    },
+    {
+      "id": 11,
+      "question": "Time crawled as the students waited for the final bell.",
+      "options": ["Simile", "Personification", "Hyperbole", "Alliteration"],
+      "correctAnswer": 1,
+      "explanation": "Time is given a human action—\"crawled.\""
+    },
+    {
+      "id": 12,
+      "question": "The sleet slapped the windows in a furious rhythm.",
+      "options": ["Onomatopoeia", "Metaphor", "Juxtaposition", "Oxymoron"],
+      "correctAnswer": 0,
+      "explanation": "\"Slapped\" imitates the sound and impact of sleet."
+    },
+    {
+      "id": 13,
+      "question": "Her explanation was crystal clear—so clear it sparkled.",
+      "options": ["Hyperbole", "Symbolism", "Pun", "Metaphor"],
+      "correctAnswer": 0,
+      "explanation": "Sparkling clarity is an exaggeration of how clear something can be."
+    },
+    {
+      "id": 14,
+      "question": "The city is a jungle after midnight.",
+      "options": ["Simile", "Personification", "Metaphor", "Allegory"],
+      "correctAnswer": 2,
+      "explanation": "The city is directly called a jungle—metaphor."
+    },
+    {
+      "id": 15,
+      "question": "His smile spread like butter on warm toast.",
+      "options": ["Simile", "Oxymoron", "Allusion", "Litotes"],
+      "correctAnswer": 0,
+      "explanation": "Uses \"like\" for comparison—classic simile."
+    },
+    {
+      "id": 16,
+      "question": "She's not exactly thrilled about the extra homework.",
+      "options": ["Litotes", "Hyperbole", "Euphemism", "Irony"],
+      "correctAnswer": 0,
+      "explanation": "A negative expression (not thrilled) used to understate a strong feeling."
+    },
+    {
+      "id": 17,
+      "question": "Silken, soft, and silent, the snow fell.",
+      "options": ["Assonance", "Alliteration", "Synecdoche", "Apostrophe"],
+      "correctAnswer": 1,
+      "explanation": "Repetition of the 's' sound—hallmark of alliteration."
+    },
+    {
+      "id": 18,
+      "question": "The pen will remember what the sword forgets.",
+      "options": ["Synecdoche", "Metonymy", "Paradox", "Idiom"],
+      "correctAnswer": 1,
+      "explanation": "\"Pen\" stands for writing, \"sword\" for war—substitution of related ideas."
+    },
+    {
+      "id": 19,
+      "question": "All hands on deck!",
+      "options": ["Synecdoche", "Personification", "Euphemism", "Antithesis"],
+      "correctAnswer": 0,
+      "explanation": "\"Hands\" (a part) represent people (the whole)."
+    },
+    {
+      "id": 20,
+      "question": "Parting is such sweet sorrow.",
+      "options": ["Euphemism", "Oxymoron", "Satire", "Chiasmus"],
+      "correctAnswer": 1,
+      "explanation": "\"Sweet\" and \"sorrow\" are opposite, placed together for contrast."
+    },
+    {
+      "id": 21,
+      "question": "Crash! Bang! The cymbals erupted across the stage.",
+      "options": ["Onomatopoeia", "Allusion", "Conceit", "Apostrophe"],
+      "correctAnswer": 0,
+      "explanation": "Words like \"Crash!\" and \"Bang!\" imitate real sounds, which is characteristic of onomatopoeia."
+    },
+    {
+      "id": 22,
+      "question": "Freedom sang its anthem in their hearts.",
+      "options": ["Personification", "Hyperbole", "Imagery", "Simile"],
+      "correctAnswer": 0,
+      "explanation": "Freedom is given the human ability to \"sing\"—that's personification."
+    },
+    {
+      "id": 23,
+      "question": "Life isn't about waiting for the storm to pass; it's about learning to dance in the rain.",
+      "options": ["Metaphor", "Analogy", "Pun", "Satire"],
+      "correctAnswer": 1,
+      "explanation": "This compares two ideas—life and storms—as a way to explain a concept, which is an analogy."
+    },
+    {
+      "id": 24,
+      "question": "The squeaky wheel gets the grease.",
+      "options": ["Idiom", "Symbolism", "Hyperbole", "Irony"],
+      "correctAnswer": 0,
+      "explanation": "This is a common expression with an implied meaning, not to be taken literally."
+    },
+    {
+      "id": 25,
+      "question": "To err is human; to forgive, divine.",
+      "options": ["Chiasmus", "Antithesis", "Allusion", "Apostrophe"],
+      "correctAnswer": 1,
+      "explanation": "It contrasts human error with divine forgiveness—classic use of opposite ideas."
+    },
+    {
+      "id": 26,
+      "question": "Oh, homework, why must you haunt my weekends?",
+      "options": ["Apostrophe", "Sarcasm", "Satire", "Foreshadowing"],
+      "correctAnswer": 0,
+      "explanation": "The speaker addresses \"homework\" as if it were a person—an apostrophe."
+    },
+    {
+      "id": 27,
+      "question": "Her laughter, a soft waterfall, filled the room.",
+      "options": ["Simile", "Metaphor", "Alliteration", "Paradox"],
+      "correctAnswer": 1,
+      "explanation": "It compares her laughter to a waterfall without using \"like\" or \"as.\""
+    },
+    {
+      "id": 28,
+      "question": "The politician promised rivers of gold, but delivered only trickles of dust.",
+      "options": ["Hyperbole", "Symbolism", "Irony", "Litotes"],
+      "correctAnswer": 2,
+      "explanation": "The reality is opposite of what was promised, which is situational irony."
+    },
+    {
+      "id": 29,
+      "question": "The silence was deafening.",
+      "options": ["Oxymoron", "Allusion", "Understatement", "Pun"],
+      "correctAnswer": 0,
+      "explanation": "Silence cannot be deafening—this is a combination of contradictory terms."
+    },
+    {
+      "id": 30,
+      "question": "Their friendship blossomed like a cactus—slow, but resilient.",
+      "options": ["Simile", "Symbolism", "Euphemism", "Satire"],
+      "correctAnswer": 0,
+      "explanation": "Uses \"like\" to make a comparison—therefore a simile."
+    },
+    {
+      "id": 31,
+      "question": "All that glitters is not gold.",
+      "options": ["Paradox", "Idiom", "Irony", "Metonymy"],
+      "correctAnswer": 1,
+      "explanation": "A common expression meaning appearances can be deceiving—an idiom."
+    },
+    {
+      "id": 32,
+      "question": "His notebook was a doorway to other worlds.",
+      "options": ["Symbolism", "Hyperbole", "Synecdoche", "Juxtaposition"],
+      "correctAnswer": 0,
+      "explanation": "The notebook symbolizes imagination or creativity—a broader idea."
+    },
+    {
+      "id": 33,
+      "question": "He's seriously funny.",
+      "options": ["Oxymoron", "Irony", "Euphemism", "Parody"],
+      "correctAnswer": 0,
+      "explanation": "\"Serious\" and \"funny\" are opposite concepts, used together for effect."
+    },
+    {
+      "id": 34,
+      "question": "Bang! Pow! The comic panels exploded with sound.",
+      "options": ["Satire", "Onomatopoeia", "Assonance", "Metaphor"],
+      "correctAnswer": 1,
+      "explanation": "The sound effects mimic real sounds, making them onomatopoeia."
+    },
+    {
+      "id": 35,
+      "question": "The test was a breeze.",
+      "options": ["Understatement", "Euphemism", "Metaphor", "Simile"],
+      "correctAnswer": 2,
+      "explanation": "The test is directly compared to a breeze—easy and effortless."
+    },
+    {
+      "id": 36,
+      "question": "My backpack weighs a ton.",
+      "options": ["Litotes", "Hyperbole", "Symbolism", "Personification"],
+      "correctAnswer": 1,
+      "explanation": "An exaggerated statement—it doesn't literally weigh a ton."
+    },
+    {
+      "id": 37,
+      "question": "Wise fool.",
+      "options": ["Oxymoron", "Chiasmus", "Pun", "Satire"],
+      "correctAnswer": 0,
+      "explanation": "Combines contradictory terms \"wise\" and \"fool.\""
+    },
+    {
+      "id": 38,
+      "question": "The thunder grumbled old man tales across the sky.",
+      "options": ["Personification", "Metonymy", "Pun", "Allusion"],
+      "correctAnswer": 0,
+      "explanation": "Thunder is given the human quality of grumbling stories."
+    },
+    {
+      "id": 39,
+      "question": "Every battle is won before it is fought.",
+      "options": ["Allusion", "Paradox", "Understatement", "Anaphora"],
+      "correctAnswer": 1,
+      "explanation": "Seems illogical but has a deeper meaning—classic paradox."
+    },
+    {
+      "id": 40,
+      "question": "Splash! The canoe kissed the lake good-bye.",
+      "options": ["Onomatopoeia", "Euphemism", "Assonance", "Apostrophe"],
+      "correctAnswer": 0,
+      "explanation": "\"Splash\" is a sound word that imitates the noise of water—onomatopoeia."
+    },
+    {
+      "id": 41,
+      "question": "Her heart is a locked box, and I've misplaced the key.",
+      "options": ["Metaphor", "Simile", "Irony", "Alliteration"],
+      "correctAnswer": 0,
+      "explanation": "Her heart is directly compared to a \"locked box,\" without using \"like\" or \"as.\""
+    },
+    {
+      "id": 42,
+      "question": "The cafeteria's chili is practically lava.",
+      "options": ["Hyperbole", "Simile", "Sarcasm", "Metonymy"],
+      "correctAnswer": 0,
+      "explanation": "Extreme exaggeration to suggest the chili is incredibly hot."
+    },
+    {
+      "id": 43,
+      "question": "Winter whispered warnings as the days grew shorter.",
+      "options": ["Personification", "Allusion", "Metaphor", "Apostrophe"],
+      "correctAnswer": 0,
+      "explanation": "\"Winter\" is given the human ability to whisper."
+    },
+    {
+      "id": 44,
+      "question": "He's not the sharpest knife in the drawer.",
+      "options": ["Euphemism", "Litotes", "Idiom", "Metaphor"],
+      "correctAnswer": 2,
+      "explanation": "This is a common idiom meaning someone isn't very smart."
+    },
+    {
+      "id": 45,
+      "question": "To climb is to fall; to fall is to climb.",
+      "options": ["Chiasmus", "Paradox", "Simile", "Irony"],
+      "correctAnswer": 0,
+      "explanation": "Reverses the structure of the two clauses for rhetorical effect—a classic chiasmus."
+    },
+    {
+      "id": 46,
+      "question": "Boomers, gather round—let me spin you a TikTok tale.",
+      "options": ["Allusion", "Satire", "Parody", "Sarcasm"],
+      "correctAnswer": 1,
+      "explanation": "The sentence humorously critiques generational differences—satire."
+    },
+    {
+      "id": 47,
+      "question": "The gossip slithered through the hallways.",
+      "options": ["Metaphor", "Personification", "Hyperbole", "Oxymoron"],
+      "correctAnswer": 1,
+      "explanation": "\"Gossip\" is described as if it can \"slither\"—a snake-like, animate action."
+    },
+    {
+      "id": 48,
+      "question": "Dull as dishwater.",
+      "options": ["Simile", "Alliteration", "Metaphor", "Euphemism"],
+      "correctAnswer": 0,
+      "explanation": "Direct comparison using \"as\"—that's a simile."
+    },
+    {
+      "id": 49,
+      "question": "The candles performed a shaky ballet in the breeze.",
+      "options": ["Symbolism", "Personification", "Imagery", "Onomatopoeia"],
+      "correctAnswer": 1,
+      "explanation": "Candles are given the human ability to dance or perform."
+    },
+    {
+      "id": 50,
+      "question": "He's the type to bring sand to the beach.",
+      "options": ["Irony", "Idiom", "Litotes", "Pun"],
+      "correctAnswer": 0,
+      "explanation": "He's doing something redundant, which is ironic."
+    }
+  ]
+} 

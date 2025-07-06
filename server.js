@@ -15,7 +15,15 @@ app.use(cors({
     'https://spyccb.top',
     'https://www.spyccb.top',
     'http://spyccb.top',     // http 也放行，便于测试
-    'http://www.spyccb.top'
+    'http://www.spyccb.top',
+    'https://figurativelanguage.spyccb.top',  // 添加新域名
+    'http://figurativelanguage.spyccb.top',   // 添加新域名
+    'http://localhost:5173',                  // 添加本地开发环境
+    'http://localhost:5174',                  // 添加本地开发环境
+    'http://localhost:5175',                  // 添加本地开发环境
+    'http://127.0.0.1:5173',                  // 添加本地开发环境
+    'http://127.0.0.1:5174',                  // 添加本地开发环境
+    'http://127.0.0.1:5175'                   // 添加本地开发环境
   ],
   methods: ['GET','POST','DELETE']
 }));
@@ -40,6 +48,21 @@ try {
 } catch (e) {
   console.error('Failed to parse wordlists.json, resetting.', e);
   wordLists = {};
+}
+
+// ------------ 题库加载 ------------
+const QUIZ_FILE = path.resolve(__dirname, 'data/quizzes.json');
+// 如果题库文件不存在，创建一个空的题库
+if (!fs.existsSync(QUIZ_FILE)) {
+  fs.writeFileSync(QUIZ_FILE, JSON.stringify({ questions: [] }, null, 2), 'utf-8');
+}
+
+let quizzes;
+try {
+  quizzes = JSON.parse(fs.readFileSync(QUIZ_FILE, 'utf-8'));
+} catch (e) {
+  console.error('Failed to parse quizzes.json, resetting.', e);
+  quizzes = { questions: [] };
 }
 
 // Helper：修改后写回磁盘
@@ -98,6 +121,60 @@ app.delete('/wordlists/:name/items', (req, res) => {
   res.json({});
 });
 
+// ------------ REST: 题库管理 ------------
+// 获取随机题目 - 只在 figurativelanguage 域名中可用
+app.get('/quiz/random', (req, res) => {
+  // 检查请求来源
+  const origin = req.get('origin') || '';
+  const isFigLang = origin.includes('figurativelanguage') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  
+  if (!isFigLang) {
+    return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+  }
+  
+  if (!quizzes.questions || quizzes.questions.length === 0) {
+    return res.status(404).json({ error: 'No questions available' });
+  }
+  
+  const randomIndex = Math.floor(Math.random() * quizzes.questions.length);
+  const question = quizzes.questions[randomIndex];
+  
+  // 不返回正确答案和解释，这些在提交答案后才返回
+  const { correctAnswer, explanation, ...questionData } = question;
+  
+  res.json(questionData);
+});
+
+// 提交答案 - 只在 figurativelanguage 域名中可用
+app.post('/quiz/submit', (req, res) => {
+  // 检查请求来源
+  const origin = req.get('origin') || '';
+  const isFigLang = origin.includes('figurativelanguage') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  
+  if (!isFigLang) {
+    return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
+  }
+  
+  const { questionId, answer } = req.body;
+  
+  if (questionId === undefined || answer === undefined) {
+    return res.status(400).json({ error: 'Missing questionId or answer' });
+  }
+  
+  const question = quizzes.questions.find(q => q.id === questionId);
+  if (!question) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
+  
+  const isCorrect = answer === question.correctAnswer;
+  
+  res.json({
+    isCorrect,
+    correctAnswer: question.correctAnswer,
+    explanation: question.explanation
+  });
+});
+
 // ------------ Socket.IO 实时游戏逻辑 ------------
 const server = http.createServer(app);
 const io     = new Server(server, {
@@ -106,19 +183,31 @@ const io     = new Server(server, {
       'https://spyccb.top',
       'https://www.spyccb.top',
       'http://spyccb.top',
-      'http://www.spyccb.top'
+      'http://www.spyccb.top',
+      'https://figurativelanguage.spyccb.top',  // 添加新域名
+      'http://figurativelanguage.spyccb.top',   // 添加新域名
+      'http://localhost:5173',                  // 添加本地开发环境
+      'http://localhost:5174',                  // 添加本地开发环境
+      'http://localhost:5175',                  // 添加本地开发环境
+      'http://127.0.0.1:5173',                  // 添加本地开发环境
+      'http://127.0.0.1:5174',                  // 添加本地开发环境
+      'http://127.0.0.1:5175'                   // 添加本地开发环境
     ]
   }
 });
 
-let rooms      = {};   // { roomId: { host, listName, players:[{id,name,role,alive}] } }
+let rooms      = {};   // { roomId: { host, listName, players:[{id,name,role,alive,inPunishment}] } }
 let votes      = {};   // { roomId: { [fromId]: toId } }
 let wordMap    = {};   // { roomId: { [playerId]: { word, role } } }
 let spiesMap   = {};   // { roomId: Set<playerIndex> }
 
 io.on('connection', socket => {
   console.log(`Client connected: ${socket.id}`);
-
+  
+  // 检查客户端来源
+  const clientOrigin = socket.handshake.headers.origin || '';
+  const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
+  
   // 创建房间
   socket.on('create-room', ({ roomId, name }) => {
     // 检查房间是否已经存在
@@ -130,9 +219,10 @@ io.on('connection', socket => {
     rooms[roomId] = {
       id: roomId,
       host: socket.id,
-      listName: 'default',
-      players: [{ id: socket.id, name, role: null, alive: false }],
+      listName: isFigLang ? 'figurative_language' : 'default',
+      players: [{ id: socket.id, name, role: null, alive: false, inPunishment: false }],
       status: 'waiting', // 添加房间状态: waiting, playing, finished
+      isFigLang: isFigLang, // 记录房间类型
     };
     socket.join(roomId);
     io.to(roomId).emit('room-updated', rooms[roomId]);
@@ -142,7 +232,7 @@ io.on('connection', socket => {
   socket.on('join-room', ({ roomId, name }) => {
     const room = rooms[roomId];
     if (room && !room.players.find(p => p.id === socket.id)) {
-      room.players.push({ id: socket.id, name, role: null, alive: false });
+      room.players.push({ id: socket.id, name, role: null, alive: false, inPunishment: false });
       socket.join(roomId);
       // 修复：如果房主已不在房间，自动指定新房主
       if (!room.players.find(p => p.id === room.host)) {
@@ -218,6 +308,12 @@ io.on('connection', socket => {
   socket.on('change-list', ({ roomId, listName }) => {
     const room = rooms[roomId];
     if (room && wordLists[listName]) {
+      // 检查是否为特殊词库
+      if (listName === 'figurative_language' && !room.isFigLang) {
+        socket.emit('special-wordlist-error', { message: '该词库为特殊词库，请在figurativelanguage.spyccb.top中使用。' });
+        return;
+      }
+      
       room.listName = listName;
       io.to(roomId).emit('room-updated', room);
     }
@@ -234,7 +330,11 @@ io.on('connection', socket => {
     delete spiesMap[roomId];
     delete wordMap[roomId];
     delete votes[roomId];
-    room.players.forEach(p => { p.role = null; p.alive = false; });
+    room.players.forEach(p => { 
+      p.role = null; 
+      p.alive = false; 
+      p.inPunishment = false; // 重置惩罚状态
+    });
     room.status = 'waiting'; // 重置房间状态
     io.to(roomId).emit('room-updated', room);
   });
@@ -244,6 +344,16 @@ io.on('connection', socket => {
     console.log('收到 start-game', { roomId, spyCount, from: socket.id }); // 调试日志
     const room = rooms[roomId];
     if (!room) return;
+    
+    // 检查是否有玩家在惩罚环节 - 只在 figurativelanguage 域名中检查
+    if (room.isFigLang) {
+      const anyPlayerInPunishment = room.players.some(p => p.inPunishment);
+      if (anyPlayerInPunishment) {
+        socket.emit('players-in-punishment');
+        return;
+      }
+    }
+    
     // 首轮分配角色
     if (!spiesMap[roomId]) {
       spiesMap[roomId] = new Set();
@@ -295,9 +405,19 @@ io.on('connection', socket => {
         
         // 向房间内所有玩家发送结束消息
         io.to(roomId).emit('round-summary', { summary });
-        io.to(roomId).emit('spy-win');
         
-        // 清空投票信息
+        // 标记平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
+        if (room.isFigLang) {
+          alivePlayers.forEach(player => {
+            if (player.role === 'civilian') {
+              player.inPunishment = true;
+              io.to(player.id).emit('enter-punishment');
+            }
+          });
+        }
+        
+        io.to(roomId).emit('spy-win');
+        io.to(roomId).emit('room-updated', room);
         votes[roomId] = {};
         return;
       }
@@ -335,8 +455,19 @@ io.on('connection', socket => {
         summary[pid] = info;
       });
       room.status = 'finished'; // 设置房间状态为已完成
+      
+      // 标记卧底进入惩罚环节 - 只在 figurativelanguage 域名中生效
+      if (room.isFigLang) {
+        const spyPlayer = room.players.find(p => p.id === eliminatedId);
+        if (spyPlayer) {
+          spyPlayer.inPunishment = true;
+          io.to(eliminatedId).emit('enter-punishment');
+        }
+      }
+      
       io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-eliminated', { eliminatedId });
+      io.to(roomId).emit('room-updated', room);
       votes[roomId] = {};
       return;
     }
@@ -358,8 +489,20 @@ io.on('connection', socket => {
         summary[pid] = info;
       });
       room.status = 'finished'; // 设置房间状态为已完成
+      
+      // 标记平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
+      if (room.isFigLang) {
+        alivePost.forEach(player => {
+          if (player.role === 'civilian') {
+            player.inPunishment = true;
+            io.to(player.id).emit('enter-punishment');
+          }
+        });
+      }
+      
       io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-win');
+      io.to(roomId).emit('room-updated', room);
       votes[roomId] = {};
       return;
     }
@@ -371,8 +514,20 @@ io.on('connection', socket => {
         summary[pid] = info;
       });
       room.status = 'finished'; // 设置房间状态为已完成
+      
+      // 标记所有存活的平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
+      if (room.isFigLang) {
+        room.players.forEach(player => {
+          if (player.role === 'civilian' && !player.alive) {
+            player.inPunishment = true;
+            io.to(player.id).emit('enter-punishment');
+          }
+        });
+      }
+      
       io.to(roomId).emit('round-summary', { summary });
       io.to(roomId).emit('spy-win');
+      io.to(roomId).emit('room-updated', room);
       votes[roomId] = {};
       return;
     }
@@ -390,6 +545,19 @@ io.on('connection', socket => {
     });
 
     votes[roomId] = {};
+  });
+
+  // 处理惩罚环节完成 - 只在 figurativelanguage 域名中生效
+  socket.on('punishment-completed', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || !room.isFigLang) return;
+    
+    // 找到当前玩家
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      player.inPunishment = false;
+      io.to(roomId).emit('room-updated', room);
+    }
   });
 
   // 发牌函数
