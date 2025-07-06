@@ -596,11 +596,21 @@ io.on('connection', socket => {
   // 发牌函数
   function dealWords(roomId) {
     const room = rooms[roomId];
+    console.log(`Room ${roomId} listName: ${room.listName}, isFigLang: ${room.isFigLang}`);
+    
     const list = wordLists[room.listName] || [];
-    if (!list.length) return;
+    console.log(`List from ${room.listName} has ${list.length} entries`);
+    console.log(`First 3 entries: ${list.slice(0, 3)}`);
+    
+    if (!list.length) {
+      console.error(`Empty word list for ${room.listName}`);
+      return;
+    }
     
     // 从词库中随机选择一行词语
-    const randomPair = list[Math.floor(Math.random() * list.length)];
+    const randomIndex = Math.floor(Math.random() * list.length);
+    const randomPair = list[randomIndex];
+    console.log(`Selected word pair index ${randomIndex}: "${randomPair}"`);
     
     // 将词语分割为两个词
     const wordsArray = randomPair.split(',');
@@ -611,11 +621,15 @@ io.on('connection', socket => {
       return;
     }
     
+    console.log(`Split words: [${wordsArray[0]}] and [${wordsArray[1]}]`);
+    
     // 随机决定是否交换词语顺序 (50% 的概率)
     const shouldSwap = Math.random() < 0.5;
+    console.log(`Should swap words: ${shouldSwap}`);
     
     // 根据是否交换决定平民词和卧底词
     const [cWord, sWord] = shouldSwap ? [wordsArray[1], wordsArray[0]] : [wordsArray[0], wordsArray[1]];
+    console.log(`Final words assignment - Civilian: [${cWord}], Spy: [${sWord}]`);
     
     wordMap[roomId] = {};
     room.players.forEach(p => {
@@ -623,6 +637,7 @@ io.on('connection', socket => {
       const w = p.role === 'spy' ? sWord : cWord;
       wordMap[roomId][p.id] = { word: w, role: p.role };
       io.to(p.id).emit('deal-words', { word: w, role: p.role });
+      console.log(`Assigned word [${w}] to player ${p.name} (${p.role})`);
     });
   }
 });
