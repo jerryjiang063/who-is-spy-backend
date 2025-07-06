@@ -328,6 +328,21 @@ io.on('connection', socket => {
     const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
     console.log(`isFigLang determined as: ${isFigLang} for room ${roomId}`);
     
+    // 确保词库存在
+    if (isFigLang) {
+      if (!wordLists.figurative_language || !Array.isArray(wordLists.figurative_language) || wordLists.figurative_language.length === 0) {
+        console.warn('figurative_language 词库不存在或为空，创建默认词库');
+        wordLists.figurative_language = [
+          "Metaphor,Simile",
+          "Personification,Anthropomorphism",
+          "Hyperbole,Exaggeration",
+          "Onomatopoeia,Alliteration",
+          "Irony,Sarcasm"
+        ];
+        saveWordLists();
+      }
+    }
+    
     const listName = isFigLang ? 'figurative_language' : 'default';
     console.log(`Setting initial list name to: ${listName} for room ${roomId}`);
 
@@ -478,6 +493,14 @@ io.on('connection', socket => {
     console.log(`- isFigLang: ${room.isFigLang}`);
     console.log(`- Available lists: ${Object.keys(wordLists)}`);
     console.log(`- Spy count: ${spyCount}`);
+    
+    // 强制检查：如果是figurativelanguage域名，确保使用figurative_language词库
+    if (room.isFigLang && room.listName !== 'figurative_language') {
+      console.log(`强制修正：将词库从 ${room.listName} 改为 figurative_language`);
+      room.listName = 'figurative_language';
+      // 向客户端发送房间更新，确保UI显示正确的词库
+      io.to(roomId).emit('room-updated', room);
+    }
     
     // 检查是否有玩家在惩罚环节 - 只在 figurativelanguage 域名中检查
     if (room.isFigLang) {
@@ -703,6 +726,29 @@ io.on('connection', socket => {
     if (room.isFigLang && room.listName !== 'figurative_language') {
       console.log(`Correcting list name for figLang room from ${room.listName} to figurative_language`);
       room.listName = 'figurative_language';
+    }
+    
+    // 直接检查词库是否存在，如果不存在，使用备用词库
+    if (!wordLists[room.listName] || !Array.isArray(wordLists[room.listName]) || wordLists[room.listName].length === 0) {
+      console.error(`词库 ${room.listName} 不存在或为空，使用备用词库`);
+      
+      if (room.isFigLang) {
+        // 如果是figurative_language域名，使用默认的figurative_language词库
+        wordLists.figurative_language = [
+          "Metaphor,Simile",
+          "Personification,Anthropomorphism",
+          "Hyperbole,Exaggeration",
+          "Onomatopoeia,Alliteration",
+          "Irony,Sarcasm"
+        ];
+        room.listName = 'figurative_language';
+        saveWordLists();
+      } else {
+        // 否则使用default词库
+        room.listName = 'default';
+      }
+      
+      console.log(`已切换到备用词库: ${room.listName}`);
     }
     
     const list = wordLists[room.listName] || [];
