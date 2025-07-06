@@ -21,11 +21,19 @@ app.use(cors({
     'http://localhost:5173',                  // 添加本地开发环境
     'http://localhost:5174',                  // 添加本地开发环境
     'http://localhost:5175',                  // 添加本地开发环境
+    'http://localhost:5176',                  // 添加本地开发环境
+    'http://localhost:5177',                  // 添加本地开发环境
+    'http://localhost:5178',                  // 添加本地开发环境
     'http://127.0.0.1:5173',                  // 添加本地开发环境
     'http://127.0.0.1:5174',                  // 添加本地开发环境
-    'http://127.0.0.1:5175'                   // 添加本地开发环境
+    'http://127.0.0.1:5175',                  // 添加本地开发环境
+    'http://127.0.0.1:5176',                  // 添加本地开发环境
+    'http://127.0.0.1:5177',                  // 添加本地开发环境
+    'http://127.0.0.1:5178'                   // 添加本地开发环境
   ],
-  methods: ['GET','POST','DELETE']
+  methods: ['GET','POST','DELETE'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(bodyParser.json());
@@ -126,9 +134,17 @@ app.delete('/wordlists/:name/items', (req, res) => {
 app.get('/quiz/random', (req, res) => {
   // 检查请求来源
   const origin = req.get('origin') || '';
-  const isFigLang = origin.includes('figurativelanguage') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  console.log('Quiz random request from origin:', origin); // 添加日志
+  
+  // 放宽检查条件，允许任何包含 figurativelanguage 的域名
+  // 或者本地开发环境访问
+  const isFigLang = origin.includes('figurativelanguage') || 
+                   origin.includes('localhost') || 
+                   origin.includes('127.0.0.1') ||
+                   !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
   
   if (!isFigLang) {
+    console.log('Access denied for origin:', origin); // 添加日志
     return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
   }
   
@@ -149,9 +165,17 @@ app.get('/quiz/random', (req, res) => {
 app.post('/quiz/submit', (req, res) => {
   // 检查请求来源
   const origin = req.get('origin') || '';
-  const isFigLang = origin.includes('figurativelanguage') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  console.log('Quiz submit request from origin:', origin); // 添加日志
+  
+  // 放宽检查条件，允许任何包含 figurativelanguage 的域名
+  // 或者本地开发环境访问
+  const isFigLang = origin.includes('figurativelanguage') || 
+                   origin.includes('localhost') || 
+                   origin.includes('127.0.0.1') ||
+                   !origin; // 允许没有 origin 的请求（可能是直接从服务器发起的请求）
   
   if (!isFigLang) {
+    console.log('Access denied for origin:', origin); // 添加日志
     return res.status(403).json({ error: 'This API is only available on figurativelanguage.spyccb.top' });
   }
   
@@ -189,10 +213,19 @@ const io     = new Server(server, {
       'http://localhost:5173',                  // 添加本地开发环境
       'http://localhost:5174',                  // 添加本地开发环境
       'http://localhost:5175',                  // 添加本地开发环境
+      'http://localhost:5176',                  // 添加本地开发环境
+      'http://localhost:5177',                  // 添加本地开发环境
+      'http://localhost:5178',                  // 添加本地开发环境
       'http://127.0.0.1:5173',                  // 添加本地开发环境
       'http://127.0.0.1:5174',                  // 添加本地开发环境
-      'http://127.0.0.1:5175'                   // 添加本地开发环境
-    ]
+      'http://127.0.0.1:5175',                  // 添加本地开发环境
+      'http://127.0.0.1:5176',                  // 添加本地开发环境
+      'http://127.0.0.1:5177',                  // 添加本地开发环境
+      'http://127.0.0.1:5178'                   // 添加本地开发环境
+    ],
+    methods: ['GET', 'POST', 'DELETE'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
   }
 });
 
