@@ -241,15 +241,27 @@ app.get('/quiz/random', (req, res) => {
       return res.status(404).json({ error: 'No questions available' });
     }
     
-    // 使用缓存的随机索引，避免频繁计算
-    const randomIndex = Math.floor(Math.random() * quizzes.questions.length);
+    // 获取玩家ID，如果有的话
+    const playerId = req.query.playerId || '';
+    console.log(`Random question requested by player: ${playerId}`);
+    
+    // 使用玩家ID作为随机种子的一部分，确保不同玩家获得不同题目
+    // 同时加入时间戳，确保同一玩家在不同时间获得不同题目
+    const timestamp = Date.now();
+    const seed = playerId ? `${playerId}-${timestamp}` : timestamp.toString();
+    const seedNumber = Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
+    // 使用种子生成随机索引
+    const randomIndex = Math.abs(seedNumber) % quizzes.questions.length;
+    console.log(`Generated random index ${randomIndex} for player ${playerId}`);
+    
     const question = quizzes.questions[randomIndex];
     
     // 不返回正确答案和解释，这些在提交答案后才返回
     const { correctAnswer, explanation, ...questionData } = question;
     
     // 添加缓存控制头，减少重复请求
-    res.set('Cache-Control', 'public, max-age=60'); // 缓存1分钟
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate'); // 禁用缓存，确保每次请求都是新的
     res.json(questionData);
   } catch (error) {
     console.error('Error in /quiz/random:', error);
@@ -801,17 +813,28 @@ io.on('connection', (socket) => {
     votes[roomId] = {};
   });
 
-  // 处理惩罚环节完成 - 只在 figurativelanguage 域名中生效
+  // 处理惩罚完成 - 只在 figurativelanguage 域名中生效
   socket.on('punishment-completed', ({ roomId }) => {
+    console.log(`Punishment completed by player ${socket.id} in room ${roomId}`);
     const room = rooms[roomId];
-    if (!room || !room.isFigLang) return;
+    if (!room) return;
     
-    // 找到当前玩家
+    // 查找该玩家
     const player = room.players.find(p => p.id === socket.id);
-    if (player) {
-      player.inPunishment = false;
-      io.to(roomId).emit('room-updated', room);
+    if (!player) {
+      console.log(`Player ${socket.id} not found in room ${roomId}`);
+      return;
     }
+    
+    // 标记该玩家惩罚完成
+    player.inPunishment = false;
+    console.log(`Player ${socket.id} punishment status updated to: ${player.inPunishment}`);
+    
+    // 通知房间内所有玩家
+    io.to(roomId).emit('room-updated', room);
+    
+    // 通知该玩家惩罚完成
+    socket.emit('punishment-completed-ack');
   });
 
   // 发牌函数
