@@ -861,11 +861,10 @@ io.on('connection', (socket) => {
     room.votingStarted = true;
     
     // 通知房间内所有玩家开始投票
-    room.players.forEach(player => {
-      if (player.alive) {
-        io.to(player.id).emit('start-next-vote');
-      }
-    });
+    io.to(roomId).emit('start-next-vote');
+    
+    // 更新房间状态，确保所有玩家都知道投票已开始
+    io.to(roomId).emit('room-updated', room);
   });
 
   // 提交投票
@@ -879,10 +878,15 @@ io.on('connection', (socket) => {
     votes[roomId][currentFromId] = toId;
 
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room) {
+      console.log(`Room ${roomId} not found for vote`);
+      return;
+    }
 
     // 检查场上存活人数
     const alivePlayers = room.players.filter(p => p.alive);
+    console.log(`Alive players in room ${roomId}: ${alivePlayers.length}`);
+    console.log(`Current votes: ${Object.keys(votes[roomId]).length}/${alivePlayers.length}`);
     
     // 如果场上只剩下2名玩家，检查是否一平一卧
     if (alivePlayers.length === 2) {
@@ -922,20 +926,40 @@ io.on('connection', (socket) => {
     
     // 等待所有存活玩家投票
     const aliveCount = alivePlayers.length;
-    if (Object.keys(votes[roomId]).length < aliveCount) return;
-
+    const voteCount = Object.keys(votes[roomId]).filter(id => 
+      alivePlayers.some(p => p.id === id)
+    ).length;
+    
+    console.log(`Vote count: ${voteCount}/${aliveCount}`);
+    
+    if (voteCount < aliveCount) {
+      // 还有玩家未投票，等待
+      return;
+    }
+    
     // 统计票数
     const tally = {};
-    Object.values(votes[roomId]).forEach(id => {
-      tally[id] = (tally[id] || 0) + 1;
+    // 只统计存活玩家的票
+    Object.entries(votes[roomId]).forEach(([voterId, targetId]) => {
+      // 检查投票者是否是存活玩家
+      const voter = alivePlayers.find(p => p.id === voterId);
+      if (voter) {
+        tally[targetId] = (tally[targetId] || 0) + 1;
+      }
     });
+    
+    console.log(`Vote tally in room ${roomId}:`, tally);
+    
     const abstain = tally['abstain'] || 0;
     const entries = Object.entries(tally).filter(([id]) => id !== 'abstain');
     const maxVotes = entries.length ? Math.max(...entries.map(([, c]) => c)) : 0;
     const topIds = entries.filter(([, c]) => c === maxVotes).map(([id]) => id);
+    
+    console.log(`Max votes: ${maxVotes}, Top IDs: ${topIds.join(', ')}, Abstain: ${abstain}`);
 
     // 平局或弃权>=最高票
     if (maxVotes === 0 || topIds.length > 1 || abstain >= maxVotes) {
+      console.log(`Vote tie in room ${roomId}`);
       io.to(roomId).emit('vote-tie');
       votes[roomId] = {};
       return;
