@@ -452,10 +452,10 @@ io.on('connection', (socket) => {
           console.log(`Disconnect timer expired for player ${socket.id}, removing from room ${roomId}`);
           
           // 30秒后仍未重连，从房间中移除玩家
-          const playerIndex = room.players.findIndex(p => p.id === socket.id);
-          if (playerIndex !== -1) {
-            room.players.splice(playerIndex, 1);
-            io.to(roomId).emit('room-updated', room);
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
+      if (playerIndex !== -1) {
+        room.players.splice(playerIndex, 1);
+        io.to(roomId).emit('room-updated', room);
             console.log(`Player ${socket.id} removed from room ${roomId} after grace period`);
             
             // 如果房间没有玩家了，删除房间
@@ -500,7 +500,7 @@ io.on('connection', (socket) => {
     // 加入房间
     socket.join(roomId);
     
-    // 检查玩家是否已在房间中
+    // 检查玩家是否已在房间中（按名字查找）
     const existingPlayer = room.players.find(p => p.name === playerName);
     if (existingPlayer) {
       console.log(`Found existing player with name ${playerName} in room ${roomId}`);
@@ -517,6 +517,7 @@ io.on('connection', (socket) => {
         if (wordMap[roomId][oldId]) {
           // 复制旧ID的词语信息到新ID
           wordMap[roomId][socket.id] = { ...wordMap[roomId][oldId] };
+          delete wordMap[roomId][oldId]; // 删除旧ID的数据
           
           // 向玩家发送词语信息
           socket.emit('deal-words', { 
@@ -531,6 +532,47 @@ io.on('connection', (socket) => {
           }
         } else {
           console.log(`No word information found for player ${playerName} with old ID ${oldId}`);
+          
+          // 尝试通过名字在wordMap中查找
+          const matchingEntry = Object.entries(wordMap[roomId]).find(([_, info]) => 
+            info.playerName === playerName
+          );
+          
+          if (matchingEntry) {
+            const [matchId, info] = matchingEntry;
+            console.log(`Found word information by name for player ${playerName}`);
+            wordMap[roomId][socket.id] = { ...info };
+            
+            // 向玩家发送词语信息
+            socket.emit('deal-words', { 
+              word: info.word, 
+              role: info.role 
+            });
+            
+            // 如果游戏正在进行中，还需要发送当前游戏状态
+            if (room.votingStarted) {
+              socket.emit('start-next-vote');
+            }
+          } else {
+            // 如果找不到词语信息，但游戏已经开始，则将玩家标记为死亡
+            existingPlayer.alive = false;
+          }
+        }
+      }
+      
+      // 更新投票表中的ID
+      if (votes[roomId]) {
+        // 更新其他玩家对该玩家的投票
+        Object.entries(votes[roomId]).forEach(([voterId, targetId]) => {
+          if (targetId === oldId) {
+            votes[roomId][voterId] = socket.id;
+          }
+        });
+        
+        // 如果该玩家已投票，更新投票者ID
+        if (votes[roomId][oldId]) {
+          votes[roomId][socket.id] = votes[roomId][oldId];
+          delete votes[roomId][oldId];
         }
       }
       
@@ -552,7 +594,7 @@ io.on('connection', (socket) => {
       socket.emit('rejoin-success', { room });
     }
   });
-  
+
   // 检查客户端来源
   const clientOrigin = socket.handshake.headers.origin || '';
   const isFigLang = clientOrigin.includes('figurativelanguage') || clientOrigin.includes('localhost') || clientOrigin.includes('127.0.0.1');
@@ -581,7 +623,7 @@ io.on('connection', (socket) => {
     rooms[roomId] = {
       id: roomId,
       host: socket.id,
-      players: [{ id: socket.id, name, role: null, alive: false, inPunishment: false }],
+      players: [{ id: socket.id, name, role: null, alive: true, inPunishment: false }],
       listName: listName,
       isFigLang: isFigLang,
       gameStarted: false,
@@ -806,6 +848,24 @@ io.on('connection', (socket) => {
   // 显示/隐藏身份
   socket.on('toggle-visibility', ({ roomId, visible }) => {
     io.to(roomId).emit('visibility-updated', { visible });
+  });
+
+  // 玩家准备好投票
+  socket.on('ready-to-vote', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    
+    console.log(`Player ${socket.id} is ready to vote in room ${roomId}`);
+    
+    // 标记房间为投票阶段
+    room.votingStarted = true;
+    
+    // 通知房间内所有玩家开始投票
+    room.players.forEach(player => {
+      if (player.alive) {
+        io.to(player.id).emit('start-next-vote');
+      }
+    });
   });
 
   // 提交投票
@@ -1073,11 +1133,18 @@ io.on('connection', (socket) => {
       player.alive = true;
     });
     
+    // 标记房间开始投票状态
+    room.votingStarted = false;
+    
     // 记录词语分配
     wordMap[room.id] = {};
     room.players.forEach(p => {
       const word = p.role === 'spy' ? sWord : cWord;
-      wordMap[room.id][p.id] = { word, role: p.role };
+      wordMap[room.id][p.id] = { 
+        word, 
+        role: p.role,
+        playerName: p.name  // 存储玩家名字，便于断线重连时恢复
+      };
       io.to(p.id).emit('deal-words', { word, role: p.role });
       console.log(`Assigned word [${word}] to player ${p.name} (${p.role})`);
     });
