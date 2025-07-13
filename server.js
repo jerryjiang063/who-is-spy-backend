@@ -782,16 +782,31 @@ io.on('connection', (socket) => {
       // 非房主玩家试图重置，不发送警告，直接忽略
       return;
     }
+    
+    console.log(`Resetting game in room ${roomId}`);
+    
+    // 清除游戏状态
     delete spiesMap[roomId];
     delete wordMap[roomId];
     delete votes[roomId];
+    
+    // 重置所有玩家状态
     room.players.forEach(p => { 
       p.role = null; 
-      p.alive = false; 
+      p.alive = true; 
       p.inPunishment = false; // 重置惩罚状态
     });
-    room.status = 'waiting'; // 重置房间状态
+    
+    // 重置房间状态
+    room.status = 'waiting';
+    room.gameStarted = false;
+    room.votingStarted = false;
+    
+    // 通知所有玩家游戏已重置
+    io.to(roomId).emit('game-reset');
     io.to(roomId).emit('room-updated', room);
+    
+    console.log(`Game reset complete for room ${roomId}`);
   });
 
   // 开始游戏
@@ -886,7 +901,6 @@ io.on('connection', (socket) => {
     // 检查场上存活人数
     const alivePlayers = room.players.filter(p => p.alive);
     console.log(`Alive players in room ${roomId}: ${alivePlayers.length}`);
-    console.log(`Current votes: ${Object.keys(votes[roomId]).length}/${alivePlayers.length}`);
     
     // 如果场上只剩下2名玩家，检查是否一平一卧
     if (alivePlayers.length === 2) {
@@ -895,31 +909,7 @@ io.on('connection', (socket) => {
       
       // 如果是一平一卧，直接卧底胜利
       if (spiesAlive === 1 && civiliansAlive === 1) {
-        // 准备游戏摘要信息
-        const summary = {};
-        Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
-          summary[pid] = info;
-        });
-        
-        // 设置房间状态为已完成
-        room.status = 'finished';
-        
-        // 向房间内所有玩家发送结束消息
-        io.to(roomId).emit('round-summary', { summary });
-        
-        // 标记平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
-        if (room.isFigLang) {
-          alivePlayers.forEach(player => {
-            if (player.role === 'civilian') {
-              player.inPunishment = true;
-              io.to(player.id).emit('enter-punishment');
-            }
-          });
-        }
-        
-        io.to(roomId).emit('spy-win');
-        io.to(roomId).emit('room-updated', room);
-        votes[roomId] = {};
+        endGameWithSpyWin(room, roomId);
         return;
       }
     }
@@ -966,37 +956,22 @@ io.on('connection', (socket) => {
     }
 
     const eliminatedId = topIds[0];
-    const eliminatedRole = room.players.find(p => p.id === eliminatedId).role;
+    const eliminatedPlayer = room.players.find(p => p.id === eliminatedId);
+    if (!eliminatedPlayer) {
+      console.log(`Eliminated player ${eliminatedId} not found in room ${roomId}`);
+      return;
+    }
+    
+    const eliminatedRole = eliminatedPlayer.role;
 
     // 淘出卧底 → 结束
     if (eliminatedRole === 'spy') {
-      // 新增：所有玩家都收到 summary
-      const summary = {};
-      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
-        summary[pid] = info;
-      });
-      room.status = 'finished'; // 设置房间状态为已完成
-      
-      // 标记卧底进入惩罚环节 - 只在 figurativelanguage 域名中生效
-      if (room.isFigLang) {
-        const spyPlayer = room.players.find(p => p.id === eliminatedId);
-        if (spyPlayer) {
-          spyPlayer.inPunishment = true;
-          io.to(eliminatedId).emit('enter-punishment');
-        }
-      }
-      
-      io.to(roomId).emit('round-summary', { summary });
-      io.to(roomId).emit('spy-eliminated', { eliminatedId });
-      io.to(roomId).emit('room-updated', room);
-      votes[roomId] = {};
+      endGameWithCivilianWin(room, roomId, eliminatedId);
       return;
     }
 
     // 淘出平民
-    room.players.forEach(p => {
-      if (p.id === eliminatedId) p.alive = false;
-    });
+    eliminatedPlayer.alive = false;
 
     // 重新检查剩余玩家情况
     const alivePost = room.players.filter(p => p.alive);
@@ -1005,51 +980,13 @@ io.on('connection', (socket) => {
     
     // 如果现在是两名玩家且一平一卧，卧底胜利
     if (alivePost.length === 2 && spiesAlivePost === 1 && civiliansAlivePost === 1) {
-      const summary = {};
-      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
-        summary[pid] = info;
-      });
-      room.status = 'finished'; // 设置房间状态为已完成
-      
-      // 标记平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
-      if (room.isFigLang) {
-        alivePost.forEach(player => {
-          if (player.role === 'civilian') {
-            player.inPunishment = true;
-            io.to(player.id).emit('enter-punishment');
-          }
-        });
-      }
-      
-      io.to(roomId).emit('round-summary', { summary });
-      io.to(roomId).emit('spy-win');
-      io.to(roomId).emit('room-updated', room);
-      votes[roomId] = {};
+      endGameWithSpyWin(room, roomId);
       return;
     }
     
     // 如果只剩下卧底
     if (spiesAlivePost === 1 && civiliansAlivePost === 0) {
-      const summary = {};
-      Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
-        summary[pid] = info;
-      });
-      room.status = 'finished'; // 设置房间状态为已完成
-      
-      // 标记所有存活的平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
-      if (room.isFigLang) {
-        room.players.forEach(player => {
-          if (player.role === 'civilian' && !player.alive) {
-            player.inPunishment = true;
-            io.to(player.id).emit('enter-punishment');
-          }
-        });
-      }
-      
-      io.to(roomId).emit('round-summary', { summary });
-      io.to(roomId).emit('spy-win');
-      io.to(roomId).emit('room-updated', room);
-      votes[roomId] = {};
+      endGameWithSpyWin(room, roomId);
       return;
     }
 
@@ -1067,6 +1004,65 @@ io.on('connection', (socket) => {
 
     votes[roomId] = {};
   });
+  
+  // 辅助函数：卧底胜利结束游戏
+  function endGameWithSpyWin(room, roomId) {
+    // 准备游戏摘要信息
+    const summary = {};
+    Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+      summary[pid] = info;
+    });
+    
+    // 设置房间状态为已完成
+    room.status = 'finished';
+    room.gameStarted = false;
+    room.votingStarted = false;
+    
+    // 向房间内所有玩家发送结束消息
+    io.to(roomId).emit('round-summary', { summary });
+    
+    // 标记平民进入惩罚环节 - 只在 figurativelanguage 域名中生效
+    if (room.isFigLang) {
+      room.players.forEach(player => {
+        if (player.role === 'civilian' && player.alive) {
+          player.inPunishment = true;
+          io.to(player.id).emit('enter-punishment');
+        }
+      });
+    }
+    
+    io.to(roomId).emit('spy-win');
+    io.to(roomId).emit('room-updated', room);
+    votes[roomId] = {};
+  }
+  
+  // 辅助函数：平民胜利结束游戏
+  function endGameWithCivilianWin(room, roomId, eliminatedId) {
+    // 准备游戏摘要信息
+    const summary = {};
+    Object.entries(wordMap[roomId]).forEach(([pid, info]) => {
+      summary[pid] = info;
+    });
+    
+    // 设置房间状态为已完成
+    room.status = 'finished';
+    room.gameStarted = false;
+    room.votingStarted = false;
+    
+    // 标记卧底进入惩罚环节 - 只在 figurativelanguage 域名中生效
+    if (room.isFigLang) {
+      const spyPlayer = room.players.find(p => p.id === eliminatedId);
+      if (spyPlayer) {
+        spyPlayer.inPunishment = true;
+        io.to(eliminatedId).emit('enter-punishment');
+      }
+    }
+    
+    io.to(roomId).emit('round-summary', { summary });
+    io.to(roomId).emit('spy-eliminated', { eliminatedId });
+    io.to(roomId).emit('room-updated', room);
+    votes[roomId] = {};
+  }
 
   // 处理惩罚完成 - 只在 figurativelanguage 域名中生效
   socket.on('punishment-completed', ({ roomId }) => {
