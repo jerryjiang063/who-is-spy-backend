@@ -480,8 +480,8 @@ io.on('connection', (socket) => {
   });
   
   // 客户端重连处理
-  socket.on('rejoin-room', ({ playerName, roomId }) => {
-    console.log(`Player ${socket.id} attempting to rejoin room ${roomId} as ${playerName}`);
+  socket.on('rejoin-room', ({ playerName, roomId, wasHost }) => {
+    console.log(`Player ${socket.id} attempting to rejoin room ${roomId} as ${playerName}, wasHost: ${wasHost}`);
     
     // 清除可能存在的断线计时器
     if (playerDisconnectTimers[socket.id]) {
@@ -507,6 +507,15 @@ io.on('connection', (socket) => {
       
       // 保存旧ID，用于更新wordMap
       const oldId = existingPlayer.id;
+      
+      // 检查该玩家是否是房主
+      const wasServerHost = (room.host === oldId);
+      
+      // 如果客户端表示是房主或者服务器认为是房主，则恢复房主状态
+      if (wasHost === true || wasServerHost) {
+        console.log(`Player ${playerName} was the host (client: ${wasHost}, server: ${wasServerHost}), restoring host status`);
+        room.host = socket.id;
+      }
       
       // 更新玩家ID
       existingPlayer.id = socket.id;
