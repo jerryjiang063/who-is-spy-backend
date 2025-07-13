@@ -398,7 +398,18 @@ const io     = new Server(server, {
     methods: ['GET', 'POST', 'DELETE'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
-  }
+  },
+  // 增加连接稳定性配置
+  pingTimeout: 60000,           // 增加ping超时时间到60秒
+  pingInterval: 25000,          // 每25秒ping一次客户端
+  transports: ['websocket', 'polling'],  // 优先使用websocket，降级到polling
+  // 自动重连配置
+  reconnection: true,
+  reconnectionAttempts: 5,      // 最多尝试重连5次
+  reconnectionDelay: 1000,      // 初始重连延迟1秒
+  reconnectionDelayMax: 5000,   // 最大重连延迟5秒
+  // 允许更长时间的连接断开而不会立即删除会话
+  connectTimeout: 45000         // 连接超时时间45秒
 });
 
 // ------------ 全局变量 ------------
@@ -407,6 +418,7 @@ let votes      = {};   // { roomId: { [fromId]: toId } }
 let wordMap    = {};   // { roomId: { [playerId]: { word, role } } }
 let spiesMap   = {};   // { roomId: Set<playerIndex> }
 let answeredQuestions = {}; // { playerId: Set<questionId> } - 记录每个玩家已回答过的题目
+let playerDisconnectTimers = {}; // 记录玩家断线计时器
 
 io.on('connection', (socket) => {
   console.log(`New client connected: ${socket.id}`);
@@ -419,16 +431,126 @@ io.on('connection', (socket) => {
   // 断开连接
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
-    // 从所有房间中移除玩家
-    Object.keys(rooms).forEach(roomId => {
-      const room = rooms[roomId];
-      const playerIndex = room.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        room.players.splice(playerIndex, 1);
-        io.to(roomId).emit('room-updated', room);
-        console.log(`Player ${socket.id} removed from room ${roomId}`);
+    
+    // 查找玩家所在的房间
+    const playerRooms = Object.entries(rooms).filter(([roomId, room]) => 
+      room.players.some(p => p.id === socket.id)
+    );
+    
+    if (playerRooms.length > 0) {
+      // 为每个房间中的玩家设置延迟移除计时器
+      playerRooms.forEach(([roomId, room]) => {
+        console.log(`Setting disconnect timer for player ${socket.id} in room ${roomId}`);
+        
+        // 如果已有计时器，先清除
+        if (playerDisconnectTimers[socket.id]) {
+          clearTimeout(playerDisconnectTimers[socket.id]);
+        }
+        
+        // 设置30秒的宽限期，允许玩家重新连接
+        playerDisconnectTimers[socket.id] = setTimeout(() => {
+          console.log(`Disconnect timer expired for player ${socket.id}, removing from room ${roomId}`);
+          
+          // 30秒后仍未重连，从房间中移除玩家
+          const playerIndex = room.players.findIndex(p => p.id === socket.id);
+          if (playerIndex !== -1) {
+            room.players.splice(playerIndex, 1);
+            io.to(roomId).emit('room-updated', room);
+            console.log(`Player ${socket.id} removed from room ${roomId} after grace period`);
+            
+            // 如果房间没有玩家了，删除房间
+            if (room.players.length === 0) {
+              delete rooms[roomId];
+              console.log(`Room ${roomId} deleted as it's empty`);
+            }
+            // 如果离开的是房主，指定新房主
+            else if (room.host === socket.id) {
+              room.host = room.players[0].id;
+              console.log(`New host assigned in room ${roomId}: ${room.host}`);
+            }
+          }
+          
+          // 清除计时器引用
+          delete playerDisconnectTimers[socket.id];
+        }, 30000); // 30秒宽限期
+      });
+    } else {
+      console.log(`Player ${socket.id} not found in any room, no grace period needed`);
+    }
+  });
+  
+  // 客户端重连处理
+  socket.on('rejoin-room', ({ playerName, roomId }) => {
+    console.log(`Player ${socket.id} attempting to rejoin room ${roomId} as ${playerName}`);
+    
+    // 清除可能存在的断线计时器
+    if (playerDisconnectTimers[socket.id]) {
+      clearTimeout(playerDisconnectTimers[socket.id]);
+      delete playerDisconnectTimers[socket.id];
+      console.log(`Cleared disconnect timer for player ${socket.id}`);
+    }
+    
+    const room = rooms[roomId];
+    if (!room) {
+      console.log(`Room ${roomId} not found for rejoin`);
+      socket.emit('rejoin-failed', { message: '房间不存在，请创建新房间' });
+      return;
+    }
+    
+    // 加入房间
+    socket.join(roomId);
+    
+    // 检查玩家是否已在房间中
+    const existingPlayer = room.players.find(p => p.name === playerName);
+    if (existingPlayer) {
+      console.log(`Found existing player with name ${playerName} in room ${roomId}`);
+      
+      // 保存旧ID，用于更新wordMap
+      const oldId = existingPlayer.id;
+      
+      // 更新玩家ID
+      existingPlayer.id = socket.id;
+      
+      // 如果游戏已经开始，恢复玩家状态
+      if (room.gameStarted && wordMap[roomId]) {
+        // 检查是否有该玩家的词语信息
+        if (wordMap[roomId][oldId]) {
+          // 复制旧ID的词语信息到新ID
+          wordMap[roomId][socket.id] = { ...wordMap[roomId][oldId] };
+          
+          // 向玩家发送词语信息
+          socket.emit('deal-words', { 
+            word: wordMap[roomId][socket.id].word, 
+            role: wordMap[roomId][socket.id].role 
+          });
+          console.log(`Restored word [${wordMap[roomId][socket.id].word}] to player ${playerName} (${wordMap[roomId][socket.id].role})`);
+          
+          // 如果游戏正在进行中，还需要发送当前游戏状态
+          if (room.votingStarted) {
+            socket.emit('start-next-vote');
+          }
+        } else {
+          console.log(`No word information found for player ${playerName} with old ID ${oldId}`);
+        }
       }
-    });
+      
+      // 通知房间内所有玩家
+      io.to(roomId).emit('room-updated', room);
+      socket.emit('rejoin-success', { room });
+      console.log(`Player ${playerName} successfully rejoined room ${roomId}`);
+    } else {
+      console.log(`Player ${playerName} not found in room ${roomId}, joining as new player`);
+      // 作为新玩家加入
+      room.players.push({ 
+        id: socket.id, 
+        name: playerName, 
+        role: null, 
+        alive: room.gameStarted ? false : true, 
+        inPunishment: false 
+      });
+      io.to(roomId).emit('room-updated', room);
+      socket.emit('rejoin-success', { room });
+    }
   });
   
   // 检查客户端来源
@@ -689,7 +811,12 @@ io.on('connection', (socket) => {
   // 提交投票
   socket.on('submit-vote', ({ roomId, fromId, toId }) => {
     votes[roomId] = votes[roomId] || {};
-    votes[roomId][fromId] = toId;
+    
+    // 使用当前socket.id作为fromId，以防止使用旧的ID
+    const currentFromId = socket.id;
+    
+    console.log(`Vote received in room ${roomId}: ${currentFromId} -> ${toId}`);
+    votes[roomId][currentFromId] = toId;
 
     const room = rooms[roomId];
     if (!room) return;
